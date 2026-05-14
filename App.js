@@ -4,7 +4,14 @@ import { StyleSheet, Text, View } from 'react-native';
 export default function App() {
   return (
     <View style={styles.container}>
-      <Text>Perveen akhtar</Text>
+      {/* give header */}
+      <View style={styles.header}>
+         
+        
+      </View>
+      <Text>Aiza Chisti Malang</Text>
+      <Text>Aliza Malangi dogar</Text>
+      <Text>Ali Meetha </Text>
       
       <StatusBar style="auto" />
     </View>
