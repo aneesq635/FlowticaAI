@@ -1,17 +1,21 @@
 import React, { useState } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  useWindowDimensions, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  useWindowDimensions,
   ActivityIndicator,
-  Alert 
+  Alert
 } from "react-native";
 import { Eye, EyeOff, ArrowRight } from "lucide-react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import * as Linking from 'expo-linking';
 import supabase from "../../components/Supabase.js"; // Adjust path as needed
+import * as WebBrowser from "expo-web-browser";
+WebBrowser.maybeCompleteAuthSession();
+import { useEffect } from "react";
 
 // Constants
 const HEADER_H = 64;
@@ -39,22 +43,187 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
+  
 
   const notify = (msg, variant) => Alert.alert(variant === "error" ? "Error" : "Info", msg);
+
+ useEffect(() => {
+  const {
+    data: listener,
+  } =
+    supabase.auth.onAuthStateChange(
+      async (
+        event,
+        session
+      ) => {
+        if (!session?.user)
+          return;
+
+        try {
+          const response =
+            await fetch(
+              `http://192.168.0.102:5000/user/${session.user.id}`
+            );
+
+          const data =
+            await response.json();
+
+          // EXISTING USER
+          if (data?.user) {
+            router.replace("/");
+          }
+
+          // NEW USER
+          else {
+            router.replace({
+              pathname:
+                "/onboarding",
+              params: {
+                supabase_id:
+                  session.user.id,
+                email:
+                  session.user.email,
+              },
+            });
+          }
+        } catch (err) {
+          console.log(err);
+        }
+      }
+    );
+
+  return () => {
+    listener.subscription.unsubscribe();
+  };
+}, []);
+  const handleForgetPassword = async () => {
+    if (!formData.email) {
+      notify("Enter your email first to reset password.", "warning");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const redirectUrl = Linking.createURL("UpdatePassword");
+
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        formData.email,
+        {
+          redirectTo: redirectUrl,
+        }
+      );
+
+      if (error) throw error;
+
+      notify("Password reset link sent! Check your email.", "success");
+    } catch (error) {
+      notify(error.message || "An error occurred.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOAuth = async (
+  provider
+) => {
+  try {
+    const redirectUrl =
+      Linking.createURL("/");
+
+    const { data, error } =
+      await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo:
+            redirectUrl,
+          skipBrowserRedirect:
+            true,
+        },
+      });
+
+    if (error) throw error;
+
+    if (data?.url) {
+      const result =
+        await WebBrowser.openAuthSessionAsync(
+          data.url,
+          redirectUrl
+        );
+
+      if (
+        result.type ===
+        "success"
+      ) {
+        const {
+          data: { session },
+        } =
+          await supabase.auth.getSession();
+
+        if (session?.user) {
+          router.replace({
+            pathname:
+              "/onboarding",
+            params: {
+              supabase_id:
+                session.user.id,
+              email:
+                session.user.email,
+            },
+          });
+        }
+      }
+    }
+  } catch (error) {
+    notify(
+      error.message ||
+        "OAuth error occurred.",
+      "error"
+    );
+  }
+};
+
 
   const handleAuth = async () => {
     if (!formData.email || !formData.password) return notify("Please fill in all fields.", "warning");
     setLoading(true);
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email: formData.email, password: formData.password });
+        const { data, error } = await supabase.auth.signUp({ email: formData.email, password: formData.password });
         if (error) throw error;
+        if (data?.user) {
+          router.replace({
+            pathname: "/onboarding",
+            params: {
+              supabase_id: data.user.id,
+              email: data.user.email,
+            },
+          });
+        }
         notify("Account created! Check your email to confirm.", "success");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: formData.email, password: formData.password });
+        const { data, error } =
+          await supabase.auth.signInWithPassword({
+            email: formData.email,
+            password: formData.password,
+          });
+
         if (error) throw error;
-        notify("Signed in successfully!", "success");
-        router.replace(redirectTo);
+
+        notify(
+          "Signed in successfully!",
+          "success"
+        );
+
+        router.replace({
+          pathname: "/onboarding",
+          params: {
+            supabase_id:
+              data.user.id,
+            email:
+              data.user.email,
+          },
+        });
       }
     } catch (error) {
       notify(error.message || "An error occurred.", "error");
@@ -63,19 +232,7 @@ export default function AuthPage() {
     }
   };
 
-  const handleForgetPassword = async () => {
-    if (!formData.email) return notify("Enter your email first to reset password.", "warning");
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
-      if (error) throw error;
-      notify("Password reset link sent! Check your email.", "success");
-    } catch (error) {
-      notify(error.message || "An error occurred.", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   return (
     <View className="flex-row flex-1" style={{ minHeight: height - HEADER_H }}>
@@ -89,9 +246,9 @@ export default function AuthPage() {
             {isSignUp ? "Start managing services with AI today" : "Sign in to your AI service dashboard"}
           </Text>
 
-          {/* Google OAuth */}
-          <TouchableOpacity className="w-full h-[42px] border border-[#e5e5e3] bg-white rounded-xl flex-row items-center justify-center mb-5 gap-[9px]">
-            {/* Provide an SVG component here for Google logo */}
+          {/* Google OAuth
+          <TouchableOpacity className="w-full h-[42px] border border-[#e5e5e3] bg-white rounded-xl flex-row items-center justify-center mb-5 gap-[9px]" onPress={() => handleOAuth('google')}>
+           
             <Text className="text-[13px] font-medium text-[#333]">Continue with Google</Text>
           </TouchableOpacity>
 
@@ -99,7 +256,7 @@ export default function AuthPage() {
             <View className="flex-1 h-px bg-[#ebebea]" />
             <Text className="text-[11px] text-[#bbb] uppercase tracking-widest">or email</Text>
             <View className="flex-1 h-px bg-[#ebebea]" />
-          </View>
+          </View> */}
 
           {/* Form */}
           <View className="flex-col gap-[14px] mb-5">
