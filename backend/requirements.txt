@@ -1,0 +1,16 @@
+flask
+flask-cors
+flask-socketio
+pymongo
+python-dotenv
+langchain
+langgraph
+langchain-openai
+langchain-mongodb
+pydantic
+openai
+tiktoken
+pandas
+numpy
+python-engineio==4.9.0
+python-socketio==5.11.1

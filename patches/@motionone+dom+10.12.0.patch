@@ -1,0 +1,13 @@
+diff --git a/node_modules/@motionone/dom/dist/index.cjs.js b/node_modules/@motionone/dom/dist/index.cjs.js
+index 9d4d68b..795072e 100644
+--- a/node_modules/@motionone/dom/dist/index.cjs.js
++++ b/node_modules/@motionone/dom/dist/index.cjs.js
+@@ -9,7 +9,7 @@ var stagger = require('./utils/stagger.cjs.js');
+ var index$2 = require('./easing/spring/index.cjs.js');
+ var index$3 = require('./easing/glide/index.cjs.js');
+ var style = require('./animate/style.cjs.js');
+-var inView = require('./gestures/in-view.cjs.js');
++var inView = require('./gestures/in-view.js');
+ var index$5 = require('./gestures/resize/index.cjs.js');
+ var index$6 = require('./gestures/scroll/index.cjs.js');
+ var presets = require('./gestures/scroll/offsets/presets.cjs.js');
