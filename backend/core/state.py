@@ -66,3 +66,29 @@ class AgentState(TypedDict):
     is_complete: bool
     errors: Annotated[List[str], operator.add]
     metadata: Annotated[Dict[str, Any], merge_dicts]
+    
+    # REQUEST & NEGOTIATION TRACKING
+    active_request_id: str
+    active_request: Annotated[Dict[str, Any], merge_dicts]
+    negotiation_status: str
+    selected_service: Annotated[Dict[str, Any], merge_dicts]
+    request_creation_success: bool
+    request_creation_error: str
+    latest_request_status: str
+    negotiation_stage: str
+    pending_provider_id: str
+    latest_offer: Annotated[Dict[str, Any], merge_dicts]
+    last_provider_response: str
+    request_status: str
+    request_id: str
+    request_data: Annotated[Dict[str, Any], merge_dicts]
+    
+    # LOOP SAFETY & RESUME TRACKING
+    turn_routed_agents: List[str]
+    
+    # PROTECTED STATE NAMESPACES
+    retrieval: Annotated[Dict[str, Any], merge_dicts]
+    negotiation: Annotated[Dict[str, Any], merge_dicts]
+    booking: Annotated[Dict[str, Any], merge_dicts]
+    notifications: Annotated[Dict[str, Any], merge_dicts]
+

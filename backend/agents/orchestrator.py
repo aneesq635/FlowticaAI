@@ -8,22 +8,119 @@ import json
 # SUPERVISOR AGENT — Deterministic State Machine Router
 # ============================================================
 class SupervisorAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, db=None):
         super().__init__("Supervisor", "Stage-Aware Orchestrator")
+        self.db = db
 
     def run(self, state: AgentState) -> Dict[str, Any]:
+        # REAL-TIME DB STATE SYNCHRONIZATION (PART 2 & 7)
+        active_request_id = state.get("active_request_id")
+        conversation_id = state.get("conversation_id")
+        customer_supabase_id = state.get("user_id")
+        
+        real_request = None
+        db_sync_updates = {}
+        
+        if self.db is not None:
+            if active_request_id:
+                from bson import ObjectId
+                try:
+                    real_request = self.db.active_requests.find_one({"_id": ObjectId(active_request_id)})
+                except Exception as e:
+                    print(f"[SUPERVISOR SYNC WARNING] Failed to find active request by ID {active_request_id}: {e}")
+            
+            if not real_request and conversation_id:
+                real_request = self.db.active_requests.find_one({"conversation_id": conversation_id})
+                if real_request:
+                    active_request_id = str(real_request["_id"])
+                    
+            if not real_request and customer_supabase_id and customer_supabase_id != "anonymous":
+                real_request = self.db.active_requests.find_one({
+                    "customer_supabase_id": customer_supabase_id,
+                    "status": {"$ne": "booked"}
+                })
+                if real_request:
+                    active_request_id = str(real_request["_id"])
+            
+            if real_request:
+                db_status = real_request.get("status", "pending")
+                print(f"[SUPERVISOR SYNC] Found active request {active_request_id} in DB. Syncing status '{db_status}'.")
+                
+                negotiation_data = state.get("negotiation", {}) or {}
+                booking_data = state.get("booking", {}) or {}
+                
+                updated_negotiation = {
+                    **negotiation_data,
+                    "negotiation_stage": db_status,
+                    "negotiation_status": db_status,
+                    "latest_request_status": db_status
+                }
+                
+                updated_booking = {
+                    **booking_data,
+                    "active_request_id": active_request_id,
+                    "active_request": real_request,
+                    "latest_request_status": db_status,
+                }
+                
+                db_sync_updates.update({
+                    "active_request_id": active_request_id,
+                    "latest_request_status": db_status,
+                    "negotiation_stage": db_status,
+                    "negotiation_status": db_status,
+                    "active_request": real_request,
+                    "negotiation": updated_negotiation,
+                    "booking": updated_booking
+                })
+                
+                booking_details = state.get("booking_details", {}) or {}
+                if booking_details.get("status") != db_status or booking_details.get("request_id") != active_request_id:
+                    updated_booking_details = {
+                        **booking_details,
+                        "request_id": active_request_id,
+                        "status": db_status,
+                        "offered_price": real_request.get("offered_price"),
+                        "requested_date": real_request.get("requested_date"),
+                        "requested_time": real_request.get("requested_time")
+                    }
+                    db_sync_updates["booking_details"] = updated_booking_details
+            else:
+                if active_request_id or state.get("booking_details", {}).get("request_id"):
+                    print("[SUPERVISOR SYNC] Active request not found in DB! Clearing stale request cache.")
+                    db_sync_updates.update({
+                        "active_request_id": "",
+                        "latest_request_status": "",
+                        "negotiation_stage": "",
+                        "negotiation_status": "",
+                        "active_request": {},
+                        "booking_details": {},
+                        "booking": {
+                            **(state.get("booking", {}) or {}),
+                            "active_request_id": "",
+                            "active_request": {},
+                            "latest_request_status": ""
+                        },
+                        "negotiation": {
+                            **(state.get("negotiation", {}) or {}),
+                            "negotiation_stage": "",
+                            "negotiation_status": "",
+                            "latest_request_status": ""
+                        }
+                    })
+        
+        # Merge db_sync_updates into local state copy for routing decisions
+        for k, v in db_sync_updates.items():
+            state[k] = v
+
         intent_obj = state.get("intent", {})
         intent = intent_obj.get("value") if isinstance(intent_obj, dict) else None
         
-        # KEY FIX: Use 'next_agent' (set by previous supervisor call) as "what just completed"
-        # This is the ONLY correct way — active_agent is overwritten by supervisor itself
         last_routed_to = state.get("next_agent", "")
-        
         conv_stage = state.get("conversation_stage", "greeting")
         is_resumed = state.get("metadata", {}).get("is_resumed", False)
         iteration = state.get("iteration_count", 0) + 1
 
-        # LOOP PROTECTION: Hard limit of 12 steps per turn
+        # LOOP PROTECTION: Hard limit of 12 steps per turn (Supervisor level)
         if iteration > 12:
             print(f"[SUPERVISOR] [WARN] LOOP GUARD TRIGGERED at iteration {iteration}. Forcing communication.")
             return {
@@ -31,7 +128,8 @@ class SupervisorAgent(BaseAgent):
                 "active_agent": "supervisor",
                 "iteration_count": iteration,
                 "execution_logs": [self.log_action(state, "Loop guard activated", f"Forced END after {iteration} iterations")],
-                "reasoning_traces": [self.create_trace("Safety guard: max iterations reached, routing to communication.")]
+                "reasoning_traces": [self.create_trace("Safety guard: max iterations reached, routing to communication.")],
+                **db_sync_updates
             }
 
         print(f"\n==================================================")
@@ -55,16 +153,22 @@ class SupervisorAgent(BaseAgent):
             
             log = self.log_action(state, f"Routing to {next_agent}", reasoning)
             trace = self.create_trace(f"[iter {iteration}] No intent -> {next_agent}")
+            
+            # Record routed history
+            turn_routed_agents = state.get("turn_routed_agents", []) or []
+            new_routed_agents = list(turn_routed_agents) + [next_agent]
+            
             return {
                 "next_agent": next_agent,
                 "active_agent": "supervisor",
                 "iteration_count": iteration,
+                "turn_routed_agents": new_routed_agents,
                 "execution_logs": [log],
-                "reasoning_traces": [trace]
+                "reasoning_traces": [trace],
+                **db_sync_updates
             }
 
         # === STEP 2: Deterministic routing based on intent + last completed step ===
-
         if intent == "greeting":
             next_agent = "communication"
             conv_stage = "greeting"
@@ -79,7 +183,6 @@ class SupervisorAgent(BaseAgent):
                 reasoning = "Services fetched, respond to user."
 
         elif intent == "service_request":
-            # Deterministic pipeline: intent -> extraction -> memory -> knowledge -> matching -> communication
             pipeline = {
                 "intent":     "extraction",
                 "extraction": "memory",
@@ -93,7 +196,6 @@ class SupervisorAgent(BaseAgent):
                 if next_agent == "communication":
                     conv_stage = "selection"
             else:
-                # First call after intent classified (last_routed_to="intent" already handled above)
                 next_agent = "extraction"
                 reasoning = "Starting service_request pipeline from extraction."
 
@@ -133,7 +235,6 @@ class SupervisorAgent(BaseAgent):
                     next_agent = "communication"
                     reasoning = "No provider in state after extraction — ask user to clarify."
                 elif next_agent == "communication":
-                    # ✅ Only move to scheduling stage if negotiation actually ran
                     if last_routed_to in ("negotiation", "request_creation"):
                         conv_stage = "awaiting_response"
                     elif state.get("selected_provider"):
@@ -145,20 +246,62 @@ class SupervisorAgent(BaseAgent):
                 reasoning = "Extract selection/negotiation inputs from user message."
 
         elif intent == "booking_confirmation":
-            # Set up the sequential pipeline: booking -> scheduling -> communication
-            pipeline = {
-                "intent": "booking",
-                "booking": "scheduling",
-                "scheduling": "communication"
-            }
-            if last_routed_to in pipeline:
-                next_agent = pipeline[last_routed_to]
-                reasoning = f"Booking confirmation pipeline: {last_routed_to} -> {next_agent}"
-                if next_agent == "communication":
-                    conv_stage = "awaiting_response"
+            selected = state.get("selected_provider", {}) or {}
+            booking_ctx = state.get("booking_context", {}) or {}
+            active_request_id = state.get("active_request_id") or state.get("booking_details", {}).get("request_id")
+
+            has_date = bool(booking_ctx.get("requested_date"))
+            has_time = bool(booking_ctx.get("requested_time"))
+            has_price = bool(booking_ctx.get("offered_price"))
+            all_details = has_date and has_time and has_price
+
+            print(f"[SUPERVISOR] booking_confirmation: active_request_id={active_request_id}, selected={selected.get('name','NONE')}, all_details={all_details}", flush=True)
+
+            # CASE 1: Request already created → finalize booking
+            if active_request_id:
+                pipeline = {
+                    "intent":     "booking",
+                    "booking":    "scheduling",
+                    "scheduling": "communication"
+                }
+                if last_routed_to in pipeline:
+                    next_agent = pipeline[last_routed_to]
+                    reasoning = f"Booking pipeline: {last_routed_to} → {next_agent}"
+                    if next_agent == "communication":
+                        conv_stage = "completion"
+                else:
+                    next_agent = "booking"
+                    reasoning = "Active request exists → finalize booking."
+
+            # CASE 2: No request yet but provider + details present → create request first
+            elif selected and all_details:
+                pipeline = {
+                    "intent":           "extraction",
+                    "extraction":       "negotiation",
+                    "negotiation":      "request_creation",
+                    "request_creation": "communication"
+                }
+                if last_routed_to in pipeline:
+                    next_agent = pipeline[last_routed_to]
+                    reasoning = f"Request creation pipeline: {last_routed_to} → {next_agent}"
+                    if next_agent == "communication":
+                        conv_stage = "awaiting_response"
+                else:
+                    next_agent = "extraction"
+                    reasoning = "No active request — create it first via negotiation + request_creation."
+
+            # CASE 3: Missing info → ask user
             else:
-                next_agent = "booking"
-                reasoning = "Booking confirmation triggered. Route to booking agent to create the database request."
+                pipeline = {
+                    "intent":     "extraction",
+                    "extraction": "communication"
+                }
+                if last_routed_to in pipeline:
+                    next_agent = pipeline[last_routed_to]
+                    reasoning = f"Missing details: {last_routed_to} → {next_agent}"
+                else:
+                    next_agent = "extraction"
+                    reasoning = "Missing booking details — extract and ask user."
 
         elif intent == "check_status":
             if last_routed_to in ("", "intent"):
@@ -169,9 +312,18 @@ class SupervisorAgent(BaseAgent):
                 reasoning = "Status sync completed -> route to communication to respond."
 
         else:
-            # General/fallback -> respond directly
             next_agent = "communication"
             reasoning = f"General intent '{intent}' -> communicate."
+
+        # LOOP SAFETY GUARD (PART 10)
+        turn_routed_agents = state.get("turn_routed_agents", []) or []
+        if next_agent != "communication" and next_agent in turn_routed_agents:
+            print(f"[SUPERVISOR] Loop safety guard triggered! Agent '{next_agent}' has already run in this turn. Forcing communication.")
+            next_agent = "communication"
+            reasoning = f"Safety loop guard: Forcing routing to communication because '{next_agent}' was already executed in this turn."
+            conv_stage = "selection"
+
+        new_routed_agents = list(turn_routed_agents) + [next_agent]
 
         log = self.log_action(state, f"Routing to {next_agent}", reasoning)
         trace = self.create_trace(f"[iter {iteration}] Intent={intent}, Last={last_routed_to} -> {next_agent}")
@@ -184,17 +336,21 @@ class SupervisorAgent(BaseAgent):
             "active_agent": "supervisor",
             "conversation_stage": conv_stage,
             "iteration_count": iteration,
+            "turn_routed_agents": new_routed_agents,
             "execution_logs": [log],
-            "reasoning_traces": [trace]
+            "reasoning_traces": [trace],
+            **db_sync_updates
         }
+
 
 
 # ============================================================
 # COMMUNICATION AGENT — Frontier UX Agent
 # ============================================================
 class CommunicationAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, db=None):
         super().__init__("Frontier Agent", "Conversational UX Interface")
+        self.db = db
 
     def run(self, state: AgentState) -> Dict[str, Any]:
         intent_obj = state.get("intent", {})
@@ -212,6 +368,51 @@ class CommunicationAgent(BaseAgent):
         # Read transactional request creation status
         request_creation_success = state.get("request_creation_success")
         request_creation_error = state.get("request_creation_error")
+
+        # PART 5: LIVE VERIFICATION CHAIN (DB Verification Chain)
+        verification_ok = True
+        verification_error = ""
+        if intent == "provider_selection" and request_creation_success is True:
+            active_request_id = state.get("active_request_id")
+            verification_ok = False
+            
+            if active_request_id and self.db is not None:
+                from bson import ObjectId
+                try:
+                    refetched = self.db.active_requests.find_one({"_id": ObjectId(active_request_id)})
+                    if refetched:
+                        refetched_price = refetched.get("offered_price")
+                        refetched_date = refetched.get("requested_date")
+                        refetched_time = refetched.get("requested_time")
+                        
+                        expected_price = booking_ctx.get("offered_price")
+                        expected_date = booking_ctx.get("requested_date")
+                        expected_time = booking_ctx.get("requested_time")
+                        
+                        price_match = str(refetched_price) == str(expected_price) if refetched_price and expected_price else True
+                        date_match = refetched_date == expected_date
+                        time_match = refetched_time == expected_time
+                        
+                        if price_match and date_match and time_match:
+                            verification_ok = True
+                            print(f"[COMMUNICATION VERIFICATION] Verification chain succeeded for request {active_request_id}")
+                        else:
+                            verification_error = f"Fields mismatch. Refetched vs Expected: Price ({refetched_price} vs {expected_price}), Date ({refetched_date} vs {expected_date}), Time ({refetched_time} vs {expected_time})"
+                            print(f"[COMMUNICATION VERIFICATION ERROR] {verification_error}")
+                    else:
+                        verification_error = "Active request document not found in MongoDB."
+                        print(f"[COMMUNICATION VERIFICATION ERROR] {verification_error}")
+                except Exception as e:
+                    verification_error = f"Database read exception: {str(e)}"
+                    print(f"[COMMUNICATION VERIFICATION ERROR] {verification_error}")
+            else:
+                verification_error = "Missing active_request_id or database connection."
+                print(f"[COMMUNICATION VERIFICATION ERROR] {verification_error}")
+            
+            if not verification_ok:
+                print("[COMMUNICATION VERIFICATION ERROR] Verification chain failed! Overriding success to failure.")
+                request_creation_success = False
+                request_creation_error = f"Verification chain failed: {verification_error}"
 
         request_creation_instructions = ""
         if request_creation_success is True:
@@ -314,7 +515,7 @@ RESPONSE RULES:
         log = self.log_action(state, "Generated response", f"Stage: {stage}, Intent: {intent}, iter: {iteration}")
         trace = self.create_trace(f"Response crafted with {len(messages_in_state)} history messages.")
 
-        return {
+        return_payload = {
             "messages": [AIMessage(content=response_text)],
             "frontier_response": response_text,
             "active_agent": "communication",
@@ -322,3 +523,18 @@ RESPONSE RULES:
             "reasoning_traces": [trace],
             "is_complete": intent in ("booking_confirmation", "provider_selection") and bool(booking_details.get("request_id") or state.get("active_request_id"))
         }
+
+        # If verification failed, persist that to state
+        if intent == "provider_selection" and state.get("request_creation_success") is True and not verification_ok:
+            return_payload.update({
+                "request_creation_success": False,
+                "request_creation_error": request_creation_error,
+                "booking": {
+                    **(state.get("booking", {}) or {}),
+                    "request_creation_success": False,
+                    "request_creation_error": request_creation_error
+                }
+            })
+
+        return return_payload
+

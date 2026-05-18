@@ -178,9 +178,26 @@ def handle_disconnect():
     print(f"[SOCKET DISCONNECT] Session ID (SID): {sid}")
     print(f"[SOCKET DISCONNECT] ============================\n")
 
+# def serialize_value(obj):
+#     """Helper to make LangGraph state serializable for SocketIO"""
+#     from core.logger import safe_value
+#     if isinstance(obj, (HumanMessage, AIMessage)):
+#         return {"content": safe_value(obj.content), "type": obj.type}
+#     if isinstance(obj, list):
+#         return [serialize_value(i) for i in obj]
+#     if isinstance(obj, dict):
+#         return {k: serialize_value(v) for k, v in obj.items() if k != "embedding"}
+#     return safe_value(obj)
 def serialize_value(obj):
     """Helper to make LangGraph state serializable for SocketIO"""
     from core.logger import safe_value
+    from datetime import datetime
+    from bson import ObjectId
+    
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, ObjectId):
+        return str(obj)
     if isinstance(obj, (HumanMessage, AIMessage)):
         return {"content": safe_value(obj.content), "type": obj.type}
     if isinstance(obj, list):
@@ -244,6 +261,7 @@ def handle_message(data):
             "intent": {},           # Cleared by replace_if_new reducer
             "next_agent": "",       # Empty = fresh turn, supervisor uses this to track progress
             "iteration_count": 0,  # Reset loop guard counter
+            "turn_routed_agents": [],  # Reset loop safety guard routed list
             "metadata": {"conversation_id": conversation_id, "is_resumed": is_resumed}
         }
 

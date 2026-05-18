@@ -2,6 +2,7 @@ from agents.base import BaseAgent
 from core.state import AgentState
 from typing import Dict, Any, List
 import json
+from datetime import datetime
 from pymongo import MongoClient
 from langchain_openai import OpenAIEmbeddings
 from core.vector_store import vector_manager
@@ -203,14 +204,88 @@ class MemoryAgent(BaseAgent):
             prompt = f"Summarize this service orchestration history for the next agent: {history}\nFocus on service type, location, and previous provider mentions. Be extremely brief."
             summary = self.llm.invoke(prompt).content
             
-            log = self.log_action(state, "History Restored", f"Resumed session summary: {summary}")
-            trace = self.create_trace("Summarized previous interaction to maintain continuity in the resumed session.")
+            # PART 6: Live DB Active Request Context Rehydration
+            rehydrated_data = {}
+            active_request_id = state.get("active_request_id")
+            conversation_id = state.get("conversation_id")
+            customer_supabase_id = state.get("user_id")
+            
+            real_request = None
+            if self.db is not None:
+                if active_request_id:
+                    from bson import ObjectId
+                    try:
+                        real_request = self.db.active_requests.find_one({"_id": ObjectId(active_request_id)})
+                    except Exception as e:
+                        print(f"[MEMORY REHYDRATE WARNING] Failed to find request by ID {active_request_id}: {e}")
+                
+                if not real_request and conversation_id:
+                    real_request = self.db.active_requests.find_one({"conversation_id": conversation_id})
+                    if real_request:
+                        active_request_id = str(real_request["_id"])
+                        
+                if not real_request and customer_supabase_id and customer_supabase_id != "anonymous":
+                    real_request = self.db.active_requests.find_one({
+                        "customer_supabase_id": customer_supabase_id,
+                        "status": {"$ne": "booked"}
+                    })
+                    if real_request:
+                        active_request_id = str(real_request["_id"])
+                
+                if real_request:
+                    db_status = real_request.get("status", "pending")
+                    print(f"[MEMORY REHYDRATE] Rehydrating active request {active_request_id} with status '{db_status}'.")
+                    
+                    booking_details = {
+                        "request_id": active_request_id,
+                        "provider_name": real_request.get("provider_name", "Specialist"),
+                        "provider_id": real_request.get("provider_supabase_id"),
+                        "status": db_status,
+                        "timestamp": real_request.get("created_at", datetime.utcnow()).isoformat() if real_request.get("created_at") else datetime.utcnow().isoformat(),
+                        "service": real_request.get("service_type"),
+                        "location": real_request.get("location", "Unknown"),
+                        "offered_price": real_request.get("offered_price"),
+                        "requested_date": real_request.get("requested_date"),
+                        "requested_time": real_request.get("requested_time")
+                    }
+                    
+                    negotiation_data = state.get("negotiation", {}) or {}
+                    booking_data = state.get("booking", {}) or {}
+                    
+                    updated_negotiation = {
+                        **negotiation_data,
+                        "negotiation_stage": db_status,
+                        "negotiation_status": db_status,
+                        "latest_request_status": db_status
+                    }
+                    
+                    updated_booking = {
+                        **booking_data,
+                        "active_request_id": active_request_id,
+                        "active_request": real_request,
+                        "latest_request_status": db_status,
+                    }
+                    
+                    rehydrated_data.update({
+                        "active_request_id": active_request_id,
+                        "latest_request_status": db_status,
+                        "negotiation_stage": db_status,
+                        "negotiation_status": db_status,
+                        "active_request": real_request,
+                        "booking_details": booking_details,
+                        "negotiation": updated_negotiation,
+                        "booking": updated_booking
+                    })
+            
+            log = self.log_action(state, "History Restored", f"Resumed session summary: {summary}. Active request rehydrated: {bool(real_request)}")
+            trace = self.create_trace("Summarized previous interaction and rehydrated live active request context from MongoDB.")
             
             return {
                 "metadata": {**metadata, "session_summary": summary},
                 "active_agent": "memory",
                 "execution_logs": [log],
-                "reasoning_traces": [trace]
+                "reasoning_traces": [trace],
+                **rehydrated_data
             }
 
         # Scenario 2: Profile Synchronization
@@ -622,6 +697,51 @@ class RequestCreationAgent(BaseAgent):
             }
 
         try:
+            # DUPLICATE CREATE GUARD (PART 3)
+            print("[REQUEST FLOW] Checking for existing active request to prevent duplicates...")
+            existing_req = self.db.active_requests.find_one({
+                "conversation_id": conversation_id,
+                "status": {"$in": ["pending", "counter_offer"]}
+            })
+            
+            if existing_req:
+                existing_id = str(existing_req["_id"])
+                print(f"[REQUEST FLOW WARNING] Duplicate request suppressed. Rehydrating existing ID: {existing_id}")
+                
+                booking_details = {
+                    "request_id": existing_id,
+                    "provider_name": existing_req.get("provider_name", "Specialist"),
+                    "provider_id": existing_req.get("provider_supabase_id"),
+                    "status": existing_req.get("status"),
+                    "timestamp": existing_req.get("created_at", datetime.utcnow()).isoformat() if existing_req.get("created_at") else datetime.utcnow().isoformat(),
+                    "service": existing_req.get("service_type"),
+                    "location": existing_req.get("location", "Unknown"),
+                    "offered_price": existing_req.get("offered_price"),
+                    "requested_date": existing_req.get("requested_date"),
+                    "requested_time": existing_req.get("requested_time")
+                }
+                
+                log = self.log_action(state, "Duplicate request suppressed", f"Rehydrating ID: {existing_id}")
+                trace = self.create_trace(f"Found existing active request {existing_id} for conversation. Suppressed duplicate insertion.")
+                
+                return {
+                    "active_request_id": existing_id,
+                    "request_creation_success": True,
+                    "request_id": existing_id,
+                    "request_data": existing_req,
+                    "negotiation_stage": existing_req.get("status"),
+                    "pending_provider_id": existing_req.get("provider_supabase_id"),
+                    "latest_offer": {"price": existing_req.get("offered_price"), "date": existing_req.get("requested_date"), "time": existing_req.get("requested_time")},
+                    "request_status": existing_req.get("status"),
+                    "latest_request_status": existing_req.get("status"),
+                    "booking_details": booking_details,
+                    "active_agent": "request_creation",
+                    "execution_logs": [log],
+                    "reasoning_traces": [trace],
+                    "workflow_stage": "booking_initiation",
+                    "conversation_stage": "awaiting_response"
+                }
+
             # 2. Entity existence verification
             # Customer lookup
             print("[REQUEST FLOW] Validating customer existence in MongoDB...")

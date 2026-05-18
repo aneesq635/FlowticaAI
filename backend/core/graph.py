@@ -15,8 +15,8 @@ client = MongoClient(os.getenv("MONGODB_URI"))
 db = client["flowtica"]
 
 # Instantiate Agents
-supervisor = SupervisorAgent()
-communication = CommunicationAgent()
+supervisor = SupervisorAgent(db)
+communication = CommunicationAgent(db)
 intent_agent = IntentAgent()
 extraction_agent = ExtractionAgent()
 memory_agent = MemoryAgent(db)
