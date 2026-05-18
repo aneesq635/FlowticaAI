@@ -209,7 +209,7 @@ export default function ProviderDashboard() {
 
   const selectedServiceType = watch('service_type');
 
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.0.102:5000';
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
 
   const fetchRequests = useCallback(async () => {
     if (!user?.id) return;

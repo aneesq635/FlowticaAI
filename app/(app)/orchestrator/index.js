@@ -10,6 +10,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { setActiveConversation, setMessages } from '../../../store/chatSlice';
 import { hydrateState } from '../../../store/orchestrationSlice';
+import api from '../../../services/api';
 
 const AnimatePresence = MotiAnimatePresence;
 
@@ -24,8 +25,7 @@ export default function OrchestratorDashboard() {
       if (id) {
         dispatch(setActiveConversation(id));
         try {
-          const res = await fetch(`http://192.168.0.102:5000/conversations/${id}/context`);
-          const data = await res.json();
+          const data = await api.get(`/conversations/${id}/context`);
           if (data.success) {
             dispatch(hydrateState(data.context));
             dispatch(setMessages({ conversationId: id, messages: data.context.messages }));

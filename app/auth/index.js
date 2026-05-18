@@ -19,7 +19,7 @@ export default function AuthPage() {
   const { width, height } = useWindowDimensions();
   const isDesktop = width > 768;
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.0.102:5000';
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
 
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);

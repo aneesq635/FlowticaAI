@@ -11,7 +11,7 @@ import {
 } from '../store/orchestrationSlice';
 import { addMessage } from '../store/chatSlice';
 
-const DEFAULT_BASE_URL = 'http://192.168.0.102:5000';
+const DEFAULT_BASE_URL = 'http://10.73.20.204:5000';
 const SOCKET_URL = process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BASE_URL;
 
 class SocketService {

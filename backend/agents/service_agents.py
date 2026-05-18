@@ -5,6 +5,7 @@ import json
 from pymongo import MongoClient
 from langchain_openai import OpenAIEmbeddings
 from core.vector_store import vector_manager
+from core.knowledge_engine import HybridRetrievalEngine
 import os
 
 class IntentAgent(BaseAgent):
@@ -261,242 +262,22 @@ class KnowledgeAgent(BaseAgent):
         # Hybrid Search & Retrieval System
         user_query = state["messages"][-1].content
         
-        # 1. Normalize Query
-        q_lower = user_query.lower()
-        for char in [".", ",", "?", "!", "-", "_", ";", ":"]:
-            q_lower = q_lower.replace(char, " ")
-        normalized_query = q_lower.strip()
+        engine = HybridRetrievalEngine(self.db, self.llm)
+        search_output = engine.search(user_query)
         
-        # Clean query tokens
-        stop_words = {"i", "want", "need", "service", "looking", "for", "find", "a", "an", "the", "with", "at", "in", "to", "of", "me"}
-        query_tokens = [w for w in normalized_query.split() if w and w not in stop_words]
+        providers = search_output["results"]
+        confidence = search_output["confidence"]
+        debug_info = search_output["debug"]
         
-        # Map common terms (plumber -> plumbing, etc.)
-        stem_map = {
-            "plumber": "plumbing",
-            "plumbers": "plumbing",
-            "cleaner": "cleaning",
-            "cleaners": "cleaning",
-            "tutor": "tuition",
-            "teachers": "tuition",
-            "teacher": "tuition",
-            "fixer": "fixing"
-        }
-        mapped_tokens = [stem_map.get(t, t) for t in query_tokens]
-        clean_query = " ".join(mapped_tokens)
-        
-        # Extract location and service elements
-        service_req = state.get("service_request", {}) or {}
-        entities = state.get("entities", {}) or {}
-        
-        service_type = service_req.get("service_type") or entities.get("service_type", "")
-        location = service_req.get("location") or entities.get("location", "")
-        
-        # Build composite vector search query
-        vector_query = clean_query
-        if service_type and service_type.lower() not in clean_query:
-            vector_query += f" {service_type}"
-        if location and location.lower() not in clean_query:
-            vector_query += f" {location}"
-            
-        print(f"[KNOWLEDGE SEARCH] Clean query: '{clean_query}' | Vector query: '{vector_query}'")
-        
-        candidates = {}
-        fallback_stage = "None"
-        
-        # 2. Semantic (Vector) Search
-        vector_matches = []
-        try:
-            if self.vector_store._collection.count() == 0:
-                print("[KNOWLEDGE SEARCH] Vector store empty, syncing from MongoDB...")
-                vector_manager.sync_from_mongodb(self.db)
-                
-            results = self.vector_store.similarity_search_with_relevance_scores(vector_query, k=10)
-            for doc, score in results:
-                vector_matches.append((doc, score))
-        except Exception as e:
-            print(f"[KNOWLEDGE SEARCH] Vector search failed: {e}")
-
-        # Populate candidates from vector matches
-        for doc, score in vector_matches:
-            mongodb_id = doc.metadata.get("mongodb_id")
-            if not mongodb_id:
-                continue
-            provider_data = self.db.service_providers.find_one({"_id": mongodb_id})
-            if not provider_data:
-                from bson import ObjectId
-                try:
-                    provider_data = self.db.service_providers.find_one({"_id": ObjectId(mongodb_id)})
-                except:
-                    pass
-            if provider_data:
-                pid = str(provider_data["_id"])
-                candidates[pid] = {
-                    "doc": provider_data,
-                    "source": "vector",
-                    "vector_score": float(score)
-                }
-
-        # 3. MongoDB Keyword / Regex Matching (Hybrid component)
-        keyword_matches_count = 0
-        if mapped_tokens:
-            try:
-                or_filters = []
-                for token in mapped_tokens:
-                    if len(token) < 2:
-                        continue
-                    or_filters.extend([
-                        {"provider_name": {"$regex": token, "$options": "i"}},
-                        {"name": {"$regex": token, "$options": "i"}},
-                        {"service_name": {"$regex": token, "$options": "i"}},
-                        {"service_type": {"$regex": token, "$options": "i"}},
-                        {"specialization": {"$regex": token, "$options": "i"}},
-                        {"location": {"$regex": token, "$options": "i"}},
-                        {"service_location": {"$regex": token, "$options": "i"}},
-                        {"description": {"$regex": token, "$options": "i"}}
-                    ])
-                
-                if or_filters:
-                    cursor = self.db.service_providers.find({"$or": or_filters}).limit(20)
-                    for p in cursor:
-                        pid = str(p["_id"])
-                        keyword_matches_count += 1
-                        if pid in candidates:
-                            candidates[pid]["source"] = "hybrid"
-                            candidates[pid]["vector_score"] = max(candidates[pid]["vector_score"], 0.7)
-                        else:
-                            candidates[pid] = {
-                                "doc": p,
-                                "source": "keyword",
-                                "vector_score": 0.6
-                            }
-            except Exception as e:
-                print(f"[KNOWLEDGE SEARCH] MongoDB keyword search failed: {e}")
-
-        # 4. Fallbacks
-        # Fallback 1: If semantic search returned empty, fall back to keyword-only
-        if not vector_matches:
-            print("[KNOWLEDGE SEARCH] Vector search returned 0 matches. Relying on keyword results.")
-            fallback_stage = "Keyword"
-
-        # Fallback 2: If BOTH semantic and keyword search failed, run broad fuzzy search
-        if not candidates:
-            print("[KNOWLEDGE SEARCH] No vector or keyword candidates found. Triggering Fuzzy Fallback search...")
-            fallback_stage = "Fuzzy"
-            import difflib
-            
-            try:
-                all_providers = list(self.db.service_providers.find({}))
-                for p in all_providers:
-                    p_name = str(p.get("provider_name") or p.get("name") or "").lower()
-                    s_name = str(p.get("service_name") or "").lower()
-                    s_type = str(p.get("service_type") or "").lower()
-                    spec = str(p.get("specialization") or "").lower()
-                    
-                    best_ratio = 0.0
-                    for token in mapped_tokens:
-                        ratios = [
-                            difflib.SequenceMatcher(None, token, p_name).ratio(),
-                            difflib.SequenceMatcher(None, token, s_name).ratio(),
-                            difflib.SequenceMatcher(None, token, s_type).ratio(),
-                            difflib.SequenceMatcher(None, token, spec).ratio()
-                        ]
-                        best_ratio = max(best_ratio, max(ratios))
-                    
-                    if best_ratio > 0.65:
-                        pid = str(p["_id"])
-                        candidates[pid] = {
-                            "doc": p,
-                            "source": "fuzzy",
-                            "vector_score": float(best_ratio)
-                        }
-            except Exception as e:
-                print(f"[KNOWLEDGE SEARCH] Fuzzy search fallback failed: {e}")
-
-        # 5. Multi-Field Boosting & Ranking Engine
-        providers = []
-        for pid, item in candidates.items():
-            doc = item["doc"]
-            base_score = item["vector_score"]
-            boost = 0.0
-            boost_details = []
-            
-            p_name = str(doc.get("provider_name") or doc.get("name") or "").lower()
-            s_name = str(doc.get("service_name") or "").lower()
-            s_type = str(doc.get("service_type") or "").lower()
-            spec = str(doc.get("specialization") or "").lower()
-            loc = str(doc.get("service_location") or doc.get("location") or "").lower()
-            
-            # Match provider name: +0.5 boost
-            for token in mapped_tokens:
-                if token in p_name and len(token) >= 3:
-                    boost += 0.5
-                    boost_details.append("provider_name (+0.5)")
-                    break
-                    
-            # Match service name: +0.4 boost
-            for token in mapped_tokens:
-                if token in s_name and len(token) >= 3:
-                    boost += 0.4
-                    boost_details.append("service_name (+0.4)")
-                    break
-                elif token in s_type and len(token) >= 3:
-                    boost += 0.3
-                    boost_details.append("service_type (+0.3)")
-                    break
-                    
-            # Match specialization: +0.3 boost
-            for token in mapped_tokens:
-                if token in spec and len(token) >= 3:
-                    boost += 0.3
-                    boost_details.append("specialization (+0.3)")
-                    break
-                    
-            # Match location: +0.2 boost
-            for token in mapped_tokens:
-                if token in loc and len(token) >= 3:
-                    boost += 0.2
-                    boost_details.append("location (+0.2)")
-                    break
-            
-            final_score = base_score + boost
-            doc["_id"] = pid
-            doc["score"] = final_score
-            doc["boosting_details"] = {
-                "base_score": base_score,
-                "boost": boost,
-                "applied": ", ".join(boost_details) or "None",
-                "source": item["source"]
-            }
-            providers.append(doc)
-
-        # Sort the final candidates list by total boosted score
-        providers = sorted(providers, key=lambda x: x["score"], reverse=True)
-        
-        # 6. Detailed Diagnostics Log print
-        print("\n" + "="*50)
-        print("  [KNOWLEDGE SEARCH] DIAGNOSTIC REPORT")
-        print("="*50)
-        print(f"  * Normalized Query:   '{clean_query}'")
-        print(f"  * Vector Query:       '{vector_query}'")
-        print(f"  * MongoDB matches:    {keyword_matches_count}")
-        print(f"  * Vector matches:     {len(vector_matches)}")
-        print(f"  * Merged candidates:  {len(providers)}")
-        print(f"  * Fallback Triggered: {fallback_stage}")
-        print("-"*50)
-        print("  TOP candidates:")
-        for idx, p in enumerate(providers[:3]):
-            b = p.get("boosting_details", {})
-            print(f"  #{idx+1}: {p.get('provider_name')} - {p.get('service_name')} ({p.get('service_type')})")
-            print(f"     Score: {p.get('score'):.2f} (Base: {b.get('base_score'):.2f}, Boost: {b.get('boost'):.2f}, App: {b.get('applied')}, Source: {b.get('source')})")
-        print("="*50 + "\n")
-        
-        log = self.log_action(state, f"Retrieved {len(providers)} candidates via Hybrid Search", f"Query: {vector_query}")
-        trace = self.create_trace("Executed hybrid semantic search with exact token-based scoring boosts.")
+        log = self.log_action(state, f"Retrieved {len(providers)} candidates via Hybrid Engine", f"Confidence: {confidence}")
+        trace = self.create_trace(f"Executed HybridRetrievalEngine. Found {len(providers)} candidates with {confidence} confidence.")
         
         return {
             "provider_candidates": providers,
-            "last_search_results": providers, # Retain in state memory
+            "last_search_results": providers,
+            "last_search_query": user_query,
+            "retrieval_confidence": confidence,
+            "retrieval_debug": debug_info,
             "active_agent": "knowledge",
             "execution_logs": [log],
             "reasoning_traces": [trace]
@@ -537,494 +318,254 @@ class NegotiationAgent(BaseAgent):
         super().__init__("Negotiation Agent", "Handles provider requests and negotiations")
         self.db = db
 
-    # def run(self, state: AgentState) -> Dict[str, Any]:
-    #     intent_obj = state.get("intent", {})
-    #     intent = intent_obj.get("value") if isinstance(intent_obj, dict) else intent_obj
-        
-    #     # [OK] Temporary debug - remove after confirming fix works
-    #     print(f"[NEGOTIATION] booking_context from state: {state.get('booking_context')}")
-    #     print(f"[NEGOTIATION] selected_provider from state: {state.get('selected_provider', {}).get('name')}")
-        
-    #     # --- STATUS CHECK ROUTINE ---
-    #     if intent == "check_status":
-    #         user_id = state.get("user_id")
-    #         conv_id = state.get("conversation_id")
-    #         booking_details = state.get("booking_details", {}) or {}
-    #         request_id = booking_details.get("request_id") or state.get("active_request_id")
-            
-    #         print(f"[STATUS] NegotiationAgent fetching latest DB request: user={user_id}, conv={conv_id}, request={request_id}")
-            
-    #         request_doc = None
-    #         if request_id:
-    #             from bson import ObjectId
-    #             try:
-    #                 request_doc = self.db.active_requests.find_one({"_id": ObjectId(request_id)})
-    #             except Exception as e:
-    #                 print(f"[STATUS] Error fetching request by ID {request_id}: {e}")
-                    
-    #         if not request_doc:
-    #             query = {}
-    #             if conv_id:
-    #                 query["conversation_id"] = conv_id
-    #             if user_id:
-    #                 query["customer_supabase_id"] = user_id
-                    
-    #             if query:
-    #                 request_doc = self.db.active_requests.find_one(query, sort=[("updated_at", -1)])
-                    
-    #         if not request_doc and user_id:
-    #             request_doc = self.db.active_requests.find_one(
-    #                 {"customer_supabase_id": user_id},
-    #                 sort=[("updated_at", -1)]
-    #             )
-                
-    #         if request_doc:
-    #             req_id_str = str(request_doc["_id"])
-    #             status = request_doc.get("status", "pending")
-    #             print(f"[STATUS] Latest DB request fetched: {req_id_str} | Status: {status}")
-                
-    #             log = self.log_action(state, f"Fetched latest request from MongoDB", f"ID: {req_id_str} | Status: {status}")
-    #             trace = self.create_trace(f"Synchronized orchestrator state with live DB status '{status}'.")
-                
-    #             updated_booking = {
-    #                 **(booking_details or {}),
-    #                 "request_id": req_id_str,
-    #                 "status": status,
-    #                 "offered_price": request_doc.get("counter_price") if status == "counter_offer" else request_doc.get("offered_price"),
-    #                 "requested_date": request_doc.get("counter_date") if status == "counter_offer" else request_doc.get("requested_date"),
-    #                 "requested_time": request_doc.get("counter_time") if status == "counter_offer" else request_doc.get("requested_time"),
-    #                 "provider_name": request_doc.get("specialization") or "Provider"
-    #             }
-                
-    #             last_provider_response = request_doc.get("counter_note") or request_doc.get("provider_note") or ""
-                
-    #             # Dynamic stages based on status
-    #             new_conv_stage = "awaiting_response"
-    #             if status in ("counter_offer", "denied"):
-    #                 new_conv_stage = "selection"
-    #             elif status in ("approved", "booked"):
-    #                 new_conv_stage = "completion"
-                    
-    #             return {
-    #                 "booking_details": updated_booking,
-    #                 "active_request_id": req_id_str,
-    #                 "latest_request_status": status,
-    #                 "last_provider_response": last_provider_response,
-    #                 "negotiation_stage": status,
-    #                 "conversation_stage": new_conv_stage,
-    #                 "active_agent": "negotiation",
-    #                 "execution_logs": [log],
-    #                 "reasoning_traces": [trace]
-    #             }
-    #         else:
-    #             print("[STATUS] No active request found in DB.")
-    #             log = self.log_action(state, "No active request found in DB", "Proceeding with empty status context.")
-    #             trace = self.create_trace("Evaluated status but found no matching database request record.")
-    #             return {
-    #                 "active_agent": "negotiation",
-    #                 "execution_logs": [log],
-    #                 "reasoning_traces": [trace]
-    #             }
-                
-    #     # --- ACTIVE REQUEST INITIALIZATION ROUTINE ---
-    #     selected = state.get("selected_provider")
-    #     booking_ctx = state.get("booking_context", {}) or {}
-        
-    #     if not selected:
-    #         log = self.log_action(state, "Negotiation failed", "No provider selected in state.")
-    #         return {"active_agent": "negotiation", "execution_logs": [log]}
-
-    #     from datetime import datetime
-        
-    #     # Get customer details if possible
-    #     customer_name = "Valued Customer"
-    #     customer_phone = "Not provided"
-    #     customer_email = "Not provided"
-        
-    #     user_id = state.get("user_id") or "anonymous"
-    #     conversation_id = state.get("conversation_id")
-        
-    #     if (not user_id or user_id == "anonymous") and conversation_id:
-    #         try:
-    #             from bson import ObjectId
-    #             conv_doc = self.db.conversations.find_one({"_id": ObjectId(conversation_id)})
-    #             if conv_doc and conv_doc.get("user_id"):
-    #                 user_id = conv_doc.get("user_id")
-    #                 print(f"[NEGOTIATION] Resolved real customer user_id={user_id} from conversations collection.")
-    #         except Exception as e:
-    #             print(f"[NEGOTIATION] Failed to resolve user_id from conversations collection: {e}")
-                
-    #     customer_location = "Not provided"
-    #     customer_avatar = ""
-    #     if user_id and user_id != "anonymous":
-    #         try:
-    #             user_doc = self.db.users.find_one({"supabase_id": user_id})
-    #             if user_doc:
-    #                 customer_name = user_doc.get("name") or customer_name
-    #                 customer_phone = user_doc.get("phone") or customer_phone
-    #                 customer_email = user_doc.get("email") or customer_email
-    #                 customer_location = user_doc.get("location") or customer_location
-    #                 customer_avatar = user_doc.get("avatar_url") or customer_avatar
-    #         except Exception as e:
-    #             print(f"[NEGOTIATION] Failed to fetch customer details: {e}")
-
-    #     # Retrieve Provider full snapshot
-    #     provider_supabase_id = selected.get("provider_supabase_id") or selected.get("provider_id") or "anonymous_provider"
-    #     provider_name = selected.get("name") or "Specialist"
-    #     provider_phone = "Not provided"
-    #     provider_email = "Not provided"
-    #     provider_location = "Not provided"
-    #     provider_avatar = ""
-    #     try:
-    #         prov_doc = self.db.provider_info.find_one({"supabase_id": provider_supabase_id})
-    #         if prov_doc:
-    #             provider_name = prov_doc.get("name") or provider_name
-    #             provider_phone = prov_doc.get("phone") or provider_phone
-    #             provider_email = prov_doc.get("email") or provider_email
-    #             provider_location = prov_doc.get("location") or provider_location
-    #             provider_avatar = prov_doc.get("avatar_url") or provider_avatar
-            
-    #         # fallback/merge with user details
-    #         prov_user_doc = self.db.users.find_one({"supabase_id": provider_supabase_id})
-    #         if prov_user_doc:
-    #             provider_phone = prov_user_doc.get("phone") or provider_phone
-    #             provider_email = prov_user_doc.get("email") or provider_email
-    #             provider_location = prov_user_doc.get("location") or provider_location
-    #             provider_avatar = prov_user_doc.get("avatar_url") or provider_avatar
-    #     except Exception as e:
-    #         print(f"[NEGOTIATION] Failed to fetch provider details: {e}")
-    #     offered_price = booking_ctx.get("offered_price")
-    #     requested_date = booking_ctx.get("requested_date")
-    #     requested_time = booking_ctx.get("requested_time")
-    #     service_type = selected.get("service_type") or state.get("service_request", {}).get("service_type") or "General Service"
-    #     specialization = selected.get("specialization") or "Specialist"
-    #     location = selected.get("location") or state.get("service_request", {}).get("location") or "Unknown"
-
-    #     # Step 1: Validate Payload
-    #     print("[NEGOTIATION] Validating active request context")
-    #     if not offered_price or not requested_date or not requested_time:
-    #         print("[NEGOTIATION ERROR] Missing payload values for active request creation")
-    #         log = self.log_action(state, "Negotiation failed", "Missing booking context fields (price, date, or time).")
-    #         return {
-    #             "active_agent": "negotiation", 
-    #             "execution_logs": [log],
-    #             "errors": ["Missing price, date, or time parameters for request dispatching."]
-    #         }
-    #     print("[NEGOTIATION] Payload validated")
-
-    #     # Step 2: Prevent Duplicate Active Requests
-    #     # If an active request already exists for this thread and provider with a non-terminal status, reuse it.
-    #     try:
-    #         existing_req = self.db.active_requests.find_one({
-    #             "conversation_id": conversation_id,
-    #             "provider_supabase_id": provider_supabase_id,
-    #             "status": {"$in": ["pending", "counter_offer", "approved"]}
-    #         })
-    #         if existing_req:
-    #             request_id = str(existing_req["_id"])
-    #             print(f"[NEGOTIATION] Active request already exists with ID: {request_id}. Reusing/Skipping creation.")
-    #             log = self.log_action(state, "Active request already exists", f"Reusing ID: {request_id}")
-    #             trace = self.create_trace(f"Reused existing active request {request_id} to avoid duplication.")
-                
-    #             # Update state variables
-    #             booking_details = {
-    #                 "request_id": request_id,
-    #                 "provider_name": selected.get("name"),
-    #                 "provider_id": selected.get("_id"),
-    #                 "status": existing_req.get("status", "pending"),
-    #                 "timestamp": existing_req.get("created_at", datetime.utcnow()).isoformat(),
-    #                 "service": service_type,
-    #                 "location": location,
-    #                 "offered_price": offered_price,
-    #                 "requested_date": requested_date,
-    #                 "requested_time": requested_time
-    #             }
-                
-    #             return {
-    #                 "active_request_id": request_id,
-    #                 "request_creation_success": True,
-    #                 "negotiation_stage": existing_req.get("status", "pending"),
-    #                 "pending_provider_id": provider_supabase_id,
-    #                 "latest_offer": {"price": offered_price, "date": requested_date, "time": requested_time},
-    #                 "request_status": existing_req.get("status", "pending"),
-    #                 "latest_request_status": existing_req.get("status", "pending"),
-    #                 "booking_details": booking_details,
-    #                 "active_agent": "negotiation",
-    #                 "execution_logs": [log],
-    #                 "reasoning_traces": [trace],
-    #                 "workflow_stage": "booking_initiation",
-    #                 "conversation_stage": "awaiting_response"
-    #             }
-    #     except Exception as dup_err:
-    #         print(f"[NEGOTIATION WARNING] Duplicate check failed: {dup_err}")
-
-    #     # Return negotiation details that are collected, confirmed, and ready to be processed by RequestCreationAgent
-    #     log = self.log_action(state, "Negotiation parameters confirmed", f"Provider: {provider_name} | Price: {offered_price} | Date: {requested_date} | Time: {requested_time}")
-    #     trace = self.create_trace(f"Collected and verified negotiation parameters for provider {provider_name}. Ready to transact.")
-        
-    #     booking_details = {
-    #         "provider_name": provider_name,
-    #         "provider_id": selected.get("_id"),
-    #         "status": "pending",
-    #         "timestamp": datetime.utcnow().isoformat(),
-    #         "service": service_type,
-    #         "location": location,
-    #         "offered_price": offered_price,
-    #         "requested_date": requested_date,
-    #         "requested_time": requested_time
-    #     }
-        
-    #     return {
-    #         "negotiation_stage": "pending",
-    #         "pending_provider_id": provider_supabase_id,
-    #         "latest_offer": {"price": offered_price, "date": requested_date, "time": requested_time},
-    #         "booking_details": booking_details,
-    #         "active_agent": "negotiation",
-    #         "execution_logs": [log],
-    #         "reasoning_traces": [trace],
-    #         "workflow_stage": "booking_initiation",
-    #         "conversation_stage": "awaiting_response"
-    #     }
     def run(self, state: AgentState) -> Dict[str, Any]:
-      intent_obj = state.get("intent", {})
-      intent = intent_obj.get("value") if isinstance(intent_obj, dict) else intent_obj
-      
-      if intent == "query_services":
-          services = self.db.service_providers.distinct("service_type")
-          log = self.log_action(state, "Retrieved available services", f"Found: {', '.join(services)}")
-          trace = self.create_trace("Queried live database for distinct service categories.")
-          return {
-              "metadata": {"available_services": services},
-              "active_agent": "knowledge",
-              "execution_logs": [log],
-              "reasoning_traces": [trace]
-          }
-  
-      # ── 1. Query Normalization ──────────────────────────────────────
-      user_query = state["messages"][-1].content
-      entities = state.get("entities", {}) or {}
-      service_req = state.get("service_request", {}) or {}
-  
-      provider_name_hint = entities.get("selected_provider_name") or ""
-      service_type = service_req.get("service_type") or entities.get("service_type", "")
-      location = service_req.get("location") or entities.get("location", "")
-  
-      q_lower = user_query.lower()
-      for char in [".", ",", "?", "!", "-", "_", ";", ":"]:
-          q_lower = q_lower.replace(char, " ")
-  
-      stop_words = {"i", "want", "need", "service", "looking", "for", "find", "a", "an", "the", "with", "at", "in", "to", "of", "me", "sir", "hello", "hi"}
-      query_tokens = [w for w in q_lower.split() if w and w not in stop_words and len(w) > 2]
-  
-      stem_map = {
-          "plumber": "plumbing", "plumbers": "plumbing",
-          "cleaner": "cleaning", "cleaners": "cleaning",
-          "tutor": "tuition", "teachers": "tuition", "teacher": "tuition",
-          "fixer": "fixing", "mechanic": "mechanic", "electrician": "electrical"
-      }
-      mapped_tokens = [stem_map.get(t, t) for t in query_tokens]
-      clean_query = " ".join(mapped_tokens)
-  
-      # ── 2. PRIORITY: Direct MongoDB Name Search ─────────────────────
-      priority_providers = []
-      existing_ids = set()
-  
-      # If provider name mentioned — search directly by name FIRST
-      if provider_name_hint:
-          name_words = [w for w in provider_name_hint.split() if len(w) > 2]
-          if name_words:
-              name_or_filters = []
-              for word in name_words:
-                  name_or_filters.extend([
-                      {"provider_name": {"$regex": word, "$options": "i"}},
-                      {"name": {"$regex": word, "$options": "i"}},
-                      {"service_name": {"$regex": word, "$options": "i"}},
-                  ])
-              direct_cursor = self.db.service_providers.find({"$or": name_or_filters}).limit(5)
-              for p in direct_cursor:
-                  pid = str(p["_id"])
-                  p["_id"] = pid
-                  p["score"] = 1.0
-                  priority_providers.append(p)
-                  existing_ids.add(pid)
-              print(f"[KNOWLEDGE] Direct name match: {len(priority_providers)} found for '{provider_name_hint}'")
-  
-      # Also search query_tokens directly against provider_name in case
-      # user typed name in message without it being extracted as selected_provider_name
-      if not priority_providers and mapped_tokens:
-          name_or_filters = []
-          for token in mapped_tokens:
-              name_or_filters.extend([
-                  {"provider_name": {"$regex": token, "$options": "i"}},
-                  {"name": {"$regex": token, "$options": "i"}},
-                  {"service_name": {"$regex": token, "$options": "i"}},
-              ])
-          direct_cursor = self.db.service_providers.find({"$or": name_or_filters}).limit(5)
-          for p in direct_cursor:
-              pid = str(p["_id"])
-              if pid not in existing_ids:
-                  p["_id"] = pid
-                  p["score"] = 0.9
-                  priority_providers.append(p)
-                  existing_ids.add(pid)
-          print(f"[KNOWLEDGE] Token name match: {len(priority_providers)} found")
-  
-      # ── 3. Vector Semantic Search ───────────────────────────────────
-      query_parts = []
-      if provider_name_hint:
-          query_parts.append(provider_name_hint)
-      if service_type:
-          query_parts.append(service_type)
-      if location:
-          query_parts.append(location)
-      if not query_parts:
-          query_parts.append(clean_query or user_query)
-  
-      vector_query = " ".join(query_parts).strip()
-      print(f"[KNOWLEDGE] Vector query: '{vector_query}'")
-  
-      vector_matches = []
-      try:
-          if self.vector_store._collection.count() == 0:
-              print("[KNOWLEDGE] Vector store empty, syncing from MongoDB...")
-              vector_manager.sync_from_mongodb(self.db)
-  
-          results = self.vector_store.similarity_search_with_relevance_scores(vector_query, k=10)
-          for doc, score in results:
-              vector_matches.append((doc, score))
-              mongodb_id = doc.metadata.get("mongodb_id")
-              if not mongodb_id:
-                  continue
-              provider_data = self.db.service_providers.find_one({"_id": mongodb_id})
-              if not provider_data:
-                  from bson import ObjectId
-                  try:
-                      provider_data = self.db.service_providers.find_one({"_id": ObjectId(mongodb_id)})
-                  except:
-                      pass
-              if provider_data:
-                  pid = str(provider_data["_id"])
-                  if pid not in existing_ids:
-                      provider_data["_id"] = pid
-                      provider_data["score"] = float(score)
-                      priority_providers.append(provider_data)
-                      existing_ids.add(pid)
-      except Exception as e:
-          print(f"[KNOWLEDGE] Vector search failed: {e}")
-  
-      # ── 4. MongoDB Keyword Search ───────────────────────────────────
-      if mapped_tokens:
-          try:
-              or_filters = []
-              for token in mapped_tokens:
-                  if len(token) < 2:
-                      continue
-                  or_filters.extend([
-                      {"provider_name": {"$regex": token, "$options": "i"}},
-                      {"name": {"$regex": token, "$options": "i"}},
-                      {"service_name": {"$regex": token, "$options": "i"}},
-                      {"service_type": {"$regex": token, "$options": "i"}},
-                      {"specialization": {"$regex": token, "$options": "i"}},
-                      {"location": {"$regex": token, "$options": "i"}},
-                      {"service_location": {"$regex": token, "$options": "i"}},
-                      {"description": {"$regex": token, "$options": "i"}}
-                  ])
-              if or_filters:
-                  cursor = self.db.service_providers.find({"$or": or_filters}).limit(20)
-                  for p in cursor:
-                      pid = str(p["_id"])
-                      if pid not in existing_ids:
-                          p["_id"] = pid
-                          p["score"] = 0.6
-                          priority_providers.append(p)
-                          existing_ids.add(pid)
-          except Exception as e:
-              print(f"[KNOWLEDGE] Keyword search failed: {e}")
-  
-      # ── 5. Fuzzy Fallback ───────────────────────────────────────────
-      if not priority_providers:
-          print("[KNOWLEDGE] No results found. Running fuzzy fallback...")
-          import difflib
-          try:
-              all_providers = list(self.db.service_providers.find({}))
-              for p in all_providers:
-                  p_name = str(p.get("provider_name") or p.get("name") or "").lower()
-                  s_name = str(p.get("service_name") or "").lower()
-                  s_type = str(p.get("service_type") or "").lower()
-                  spec = str(p.get("specialization") or "").lower()
-  
-                  best_ratio = 0.0
-                  for token in mapped_tokens:
-                      ratios = [
-                          difflib.SequenceMatcher(None, token, p_name).ratio(),
-                          difflib.SequenceMatcher(None, token, s_name).ratio(),
-                          difflib.SequenceMatcher(None, token, s_type).ratio(),
-                          difflib.SequenceMatcher(None, token, spec).ratio()
-                      ]
-                      best_ratio = max(best_ratio, max(ratios))
-  
-                  if best_ratio > 0.60:
-                      pid = str(p["_id"])
-                      if pid not in existing_ids:
-                          p["_id"] = pid
-                          p["score"] = float(best_ratio)
-                          priority_providers.append(p)
-                          existing_ids.add(pid)
-          except Exception as e:
-              print(f"[KNOWLEDGE] Fuzzy fallback failed: {e}")
-  
-      # ── 6. Boosting & Final Ranking ─────────────────────────────────
-      for p in priority_providers:
-          boost = 0.0
-          p_name = str(p.get("provider_name") or p.get("name") or "").lower()
-          s_name = str(p.get("service_name") or "").lower()
-          s_type = str(p.get("service_type") or "").lower()
-          spec = str(p.get("specialization") or "").lower()
-          loc = str(p.get("service_location") or p.get("location") or "").lower()
-  
-          for token in mapped_tokens:
-              if token in p_name and len(token) >= 3:
-                  boost += 0.5
-                  break
-          for token in mapped_tokens:
-              if token in s_name and len(token) >= 3:
-                  boost += 0.4
-                  break
-              elif token in s_type and len(token) >= 3:
-                  boost += 0.3
-                  break
-          for token in mapped_tokens:
-              if token in spec and len(token) >= 3:
-                  boost += 0.3
-                  break
-          for token in mapped_tokens:
-              if token in loc and len(token) >= 3:
-                  boost += 0.2
-                  break
-  
-          p["score"] = p.get("score", 0.5) + boost
-  
-      providers = sorted(priority_providers, key=lambda x: x.get("score", 0), reverse=True)
-  
-      # ── 7. Diagnostic Log ───────────────────────────────────────────
-      print(f"\n{'='*50}")
-      print(f"  [KNOWLEDGE] SEARCH REPORT")
-      print(f"  Query: '{vector_query}' | Tokens: {mapped_tokens}")
-      print(f"  Total found: {len(providers)}")
-      for idx, p in enumerate(providers[:3]):
-          print(f"  #{idx+1}: {p.get('provider_name') or p.get('name')} | {p.get('service_name')} | Score: {p.get('score', 0):.2f}")
-      print(f"{'='*50}\n")
-  
-      log = self.log_action(state, f"Retrieved {len(providers)} candidates", f"Query: {vector_query}")
-      trace = self.create_trace("Hybrid search: direct name match + vector + keyword + fuzzy fallback.")
-  
-      return {
-          "provider_candidates": providers,
-          "last_search_results": providers,
-          "active_agent": "knowledge",
-          "execution_logs": [log],
-          "reasoning_traces": [trace]
-      }
+        intent_obj = state.get("intent", {})
+        intent = intent_obj.get("value") if isinstance(intent_obj, dict) else intent_obj
+        
+        # [OK] Temporary debug - remove after confirming fix works
+        print(f"[NEGOTIATION] booking_context from state: {state.get('booking_context')}")
+        print(f"[NEGOTIATION] selected_provider from state: {state.get('selected_provider', {}).get('name')}")
+        
+        # --- STATUS CHECK ROUTINE ---
+        if intent == "check_status":
+            user_id = state.get("user_id")
+            conv_id = state.get("conversation_id")
+            booking_details = state.get("booking_details", {}) or {}
+            request_id = booking_details.get("request_id") or state.get("active_request_id")
+            
+            print(f"[STATUS] NegotiationAgent fetching latest DB request: user={user_id}, conv={conv_id}, request={request_id}")
+            
+            request_doc = None
+            if request_id:
+                from bson import ObjectId
+                try:
+                    request_doc = self.db.active_requests.find_one({"_id": ObjectId(request_id)})
+                except Exception as e:
+                    print(f"[STATUS] Error fetching request by ID {request_id}: {e}")
+                    
+            if not request_doc:
+                query = {}
+                if conv_id:
+                    query["conversation_id"] = conv_id
+                if user_id:
+                    query["customer_supabase_id"] = user_id
+                    
+                if query:
+                    request_doc = self.db.active_requests.find_one(query, sort=[("updated_at", -1)])
+                    
+            if not request_doc and user_id:
+                request_doc = self.db.active_requests.find_one(
+                    {"customer_supabase_id": user_id},
+                    sort=[("updated_at", -1)]
+                )
+                
+            if request_doc:
+                req_id_str = str(request_doc["_id"])
+                status = request_doc.get("status", "pending")
+                print(f"[STATUS] Latest DB request fetched: {req_id_str} | Status: {status}")
+                
+                log = self.log_action(state, f"Fetched latest request from MongoDB", f"ID: {req_id_str} | Status: {status}")
+                trace = self.create_trace(f"Synchronized orchestrator state with live DB status '{status}'.")
+                
+                updated_booking = {
+                    **(booking_details or {}),
+                    "request_id": req_id_str,
+                    "status": status,
+                    "offered_price": request_doc.get("counter_price") if status == "counter_offer" else request_doc.get("offered_price"),
+                    "requested_date": request_doc.get("counter_date") if status == "counter_offer" else request_doc.get("requested_date"),
+                    "requested_time": request_doc.get("counter_time") if status == "counter_offer" else request_doc.get("requested_time"),
+                    "provider_name": request_doc.get("specialization") or "Provider"
+                }
+                
+                last_provider_response = request_doc.get("counter_note") or request_doc.get("provider_note") or ""
+                
+                # Dynamic stages based on status
+                new_conv_stage = "awaiting_response"
+                if status in ("counter_offer", "denied"):
+                    new_conv_stage = "selection"
+                elif status in ("approved", "booked"):
+                    new_conv_stage = "completion"
+                    
+                return {
+                    "booking_details": updated_booking,
+                    "active_request_id": req_id_str,
+                    "latest_request_status": status,
+                    "last_provider_response": last_provider_response,
+                    "negotiation_stage": status,
+                    "conversation_stage": new_conv_stage,
+                    "active_agent": "negotiation",
+                    "execution_logs": [log],
+                    "reasoning_traces": [trace]
+                }
+            else:
+                print("[STATUS] No active request found in DB.")
+                log = self.log_action(state, "No active request found in DB", "Proceeding with empty status context.")
+                trace = self.create_trace("Evaluated status but found no matching database request record.")
+                return {
+                    "active_agent": "negotiation",
+                    "execution_logs": [log],
+                    "reasoning_traces": [trace]
+                }
+                
+        # --- ACTIVE REQUEST INITIALIZATION ROUTINE ---
+        selected = state.get("selected_provider")
+        booking_ctx = state.get("booking_context", {}) or {}
+        
+        if not selected:
+            log = self.log_action(state, "Negotiation failed", "No provider selected in state.")
+            return {"active_agent": "negotiation", "execution_logs": [log]}
+
+        from datetime import datetime
+        
+        # Get customer details if possible
+        customer_name = "Valued Customer"
+        customer_phone = "Not provided"
+        customer_email = "Not provided"
+        
+        user_id = state.get("user_id") or "anonymous"
+        conversation_id = state.get("conversation_id")
+        
+        if (not user_id or user_id == "anonymous") and conversation_id:
+            try:
+                from bson import ObjectId
+                conv_doc = self.db.conversations.find_one({"_id": ObjectId(conversation_id)})
+                if conv_doc and conv_doc.get("user_id"):
+                    user_id = conv_doc.get("user_id")
+                    print(f"[NEGOTIATION] Resolved real customer user_id={user_id} from conversations collection.")
+            except Exception as e:
+                print(f"[NEGOTIATION] Failed to resolve user_id from conversations collection: {e}")
+                
+        customer_location = "Not provided"
+        customer_avatar = ""
+        if user_id and user_id != "anonymous":
+            try:
+                user_doc = self.db.users.find_one({"supabase_id": user_id})
+                if user_doc:
+                    customer_name = user_doc.get("name") or customer_name
+                    customer_phone = user_doc.get("phone") or customer_phone
+                    customer_email = user_doc.get("email") or customer_email
+                    customer_location = user_doc.get("location") or customer_location
+                    customer_avatar = user_doc.get("avatar_url") or customer_avatar
+            except Exception as e:
+                print(f"[NEGOTIATION] Failed to fetch customer details: {e}")
+
+        # Retrieve Provider full snapshot
+        provider_supabase_id = selected.get("provider_supabase_id") or selected.get("provider_id") or "anonymous_provider"
+        provider_name = selected.get("name") or "Specialist"
+        provider_phone = "Not provided"
+        provider_email = "Not provided"
+        provider_location = "Not provided"
+        provider_avatar = ""
+        try:
+            prov_doc = self.db.provider_info.find_one({"supabase_id": provider_supabase_id})
+            if prov_doc:
+                provider_name = prov_doc.get("name") or provider_name
+                provider_phone = prov_doc.get("phone") or provider_phone
+                provider_email = prov_doc.get("email") or provider_email
+                provider_location = prov_doc.get("location") or provider_location
+                provider_avatar = prov_doc.get("avatar_url") or provider_avatar
+            
+            # fallback/merge with user details
+            prov_user_doc = self.db.users.find_one({"supabase_id": provider_supabase_id})
+            if prov_user_doc:
+                provider_phone = prov_user_doc.get("phone") or provider_phone
+                provider_email = prov_user_doc.get("email") or provider_email
+                provider_location = prov_user_doc.get("location") or provider_location
+                provider_avatar = prov_user_doc.get("avatar_url") or provider_avatar
+        except Exception as e:
+            print(f"[NEGOTIATION] Failed to fetch provider details: {e}")
+        offered_price = booking_ctx.get("offered_price")
+        requested_date = booking_ctx.get("requested_date")
+        requested_time = booking_ctx.get("requested_time")
+        service_type = selected.get("service_type") or state.get("service_request", {}).get("service_type") or "General Service"
+        specialization = selected.get("specialization") or "Specialist"
+        location = selected.get("location") or state.get("service_request", {}).get("location") or "Unknown"
+
+        # Step 1: Validate Payload
+        print("[NEGOTIATION] Validating active request context")
+        if not offered_price or not requested_date or not requested_time:
+            print("[NEGOTIATION ERROR] Missing payload values for active request creation")
+            log = self.log_action(state, "Negotiation failed", "Missing booking context fields (price, date, or time).")
+            return {
+                "active_agent": "negotiation", 
+                "execution_logs": [log],
+                "errors": ["Missing price, date, or time parameters for request dispatching."]
+            }
+        print("[NEGOTIATION] Payload validated")
+
+        # Step 2: Prevent Duplicate Active Requests
+        # If an active request already exists for this thread and provider with a non-terminal status, reuse it.
+        try:
+            existing_req = self.db.active_requests.find_one({
+                "conversation_id": conversation_id,
+                "provider_supabase_id": provider_supabase_id,
+                "status": {"$in": ["pending", "counter_offer", "approved"]}
+            })
+            if existing_req:
+                request_id = str(existing_req["_id"])
+                print(f"[NEGOTIATION] Active request already exists with ID: {request_id}. Reusing/Skipping creation.")
+                log = self.log_action(state, "Active request already exists", f"Reusing ID: {request_id}")
+                trace = self.create_trace(f"Reused existing active request {request_id} to avoid duplication.")
+                
+                # Update state variables
+                booking_details = {
+                    "request_id": request_id,
+                    "provider_name": selected.get("name"),
+                    "provider_id": selected.get("_id"),
+                    "status": existing_req.get("status", "pending"),
+                    "timestamp": existing_req.get("created_at", datetime.utcnow()).isoformat(),
+                    "service": service_type,
+                    "location": location,
+                    "offered_price": offered_price,
+                    "requested_date": requested_date,
+                    "requested_time": requested_time
+                }
+                
+                return {
+                    "active_request_id": request_id,
+                    "request_creation_success": True,
+                    "negotiation_stage": existing_req.get("status", "pending"),
+                    "pending_provider_id": provider_supabase_id,
+                    "latest_offer": {"price": offered_price, "date": requested_date, "time": requested_time},
+                    "request_status": existing_req.get("status", "pending"),
+                    "latest_request_status": existing_req.get("status", "pending"),
+                    "booking_details": booking_details,
+                    "active_agent": "negotiation",
+                    "execution_logs": [log],
+                    "reasoning_traces": [trace],
+                    "workflow_stage": "booking_initiation",
+                    "conversation_stage": "awaiting_response"
+                }
+        except Exception as dup_err:
+            print(f"[NEGOTIATION WARNING] Duplicate check failed: {dup_err}")
+
+        # Return negotiation details that are collected, confirmed, and ready to be processed by RequestCreationAgent
+        log = self.log_action(state, "Negotiation parameters confirmed", f"Provider: {provider_name} | Price: {offered_price} | Date: {requested_date} | Time: {requested_time}")
+        trace = self.create_trace(f"Collected and verified negotiation parameters for provider {provider_name}. Ready to transact.")
+        
+        booking_details = {
+            "provider_name": provider_name,
+            "provider_id": selected.get("_id"),
+            "status": "pending",
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": service_type,
+            "location": location,
+            "offered_price": offered_price,
+            "requested_date": requested_date,
+            "requested_time": requested_time
+        }
+        
+        return {
+            "negotiation_stage": "pending",
+            "pending_provider_id": provider_supabase_id,
+            "latest_offer": {"price": offered_price, "date": requested_date, "time": requested_time},
+            "booking_details": booking_details,
+            "active_agent": "negotiation",
+            "execution_logs": [log],
+            "reasoning_traces": [trace],
+            "workflow_stage": "booking_initiation",
+            "conversation_stage": "awaiting_response"
+        }
 class RequestCreationAgent(BaseAgent):
     def __init__(self, db):
         super().__init__("Request Creation Agent", "Transactional Request Dispatcher")

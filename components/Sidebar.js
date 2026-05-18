@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useRouter, usePathname } from 'expo-router';
 import { setActiveConversation, addConversation, setConversations, updateConversationTitle } from '../store/chatSlice';
 import { useAuth } from './AuthContext';
+import api from '../services/api';
 
 const SidebarItem = ({ icon: Icon, label, active, onPress, onRename, isEditing, editValue, setEditValue, onSaveRename, onCancelRename, onDelete }) => (
   <View style={[styles.itemContainer, active && styles.activeItem]}>
@@ -65,8 +66,7 @@ const Sidebar = () => {
   const fetchConversations = async () => {
     if (!user?.id) return;
     try {
-      const res = await fetch(`http://192.168.0.102:5000/conversations/${user.id}`);
-      const data = await res.json();
+      const data = await api.get(`/conversations/${user.id}`);
       if (data.success) {
         dispatch(setConversations(data.conversations));
       }
@@ -85,12 +85,7 @@ const Sidebar = () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const res = await fetch('http://192.168.0.102:5000/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, title: `Conversation ${conversations.length + 1}` })
-      });
-      const data = await res.json();
+      const data = await api.post('/conversations', { user_id: user.id, title: `Conversation ${conversations.length + 1}` });
       if (data.success) {
         dispatch(addConversation(data.conversation));
         router.push({
@@ -113,12 +108,7 @@ const Sidebar = () => {
   const saveRename = async (id) => {
     if (!editValue.trim()) return;
     try {
-      const res = await fetch(`http://192.168.0.102:5000/conversations/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: editValue })
-      });
-      const data = await res.json();
+      const data = await api.put(`/conversations/${id}`, { title: editValue });
       if (data.success) {
         dispatch(updateConversationTitle({ id, title: editValue }));
         setEditingId(null);
@@ -130,10 +120,7 @@ const Sidebar = () => {
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`http://192.168.0.102:5000/conversations/${id}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
+      const data = await api.delete(`/conversations/${id}`);
       if (data.success) {
         import('../store/chatSlice').then(module => {
           dispatch(module.deleteConversation(id));

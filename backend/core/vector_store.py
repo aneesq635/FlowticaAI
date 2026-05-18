@@ -65,37 +65,54 @@ class VectorStoreManager:
     #     )
     #     return text
     def generate_searchable_text(self, p):
-      provider_name = p.get("provider_name") or p.get("name") or "Unknown"
-      service_name = p.get("service_name") or p.get("name") or ""
-      service_type = p.get("service_type") or "General"
-      specialization = p.get("specialization") or "Specialist"
-      service_location = p.get("service_location") or p.get("location") or ""
-      provider_location = p.get("provider_location") or ""
-      description = p.get("description") or ""
-  
-      hourly_rate = p.get("hourly_rate") or p.get("pricing", {}).get("hourly_rate") or 0
-      currency = p.get("currency") or p.get("pricing", {}).get("currency") or "PKR"
-  
-      languages_list = p.get("languages", [])
-      languages_str = " ".join(languages_list) if isinstance(languages_list, list) else str(languages_list)
-  
-      # ✅ Rich repeated text for better semantic matching
-      text = (
-          f"{provider_name} {provider_name} "  # repeat name for weight
-          f"offers {service_name} {service_name} "  # repeat service name
-          f"{service_type} {service_type} services "  # repeat service type
-          f"specializing in {specialization} {specialization}. "
-          f"Located in {service_location} {provider_location}. "
-          f"Hourly rate {hourly_rate} {currency}. "
-          f"Languages: {languages_str}. "
-          f"Description: {description}. "
-          # Extra keyword aliases for common search patterns
-          f"Provider name: {provider_name}. "
-          f"Service: {service_name}. "
-          f"Type: {service_type}. "
-          f"Specialization: {specialization}."
-      )
-      return text
+        """
+        Generates a rich, highly semantic, natural language string for RAG embedding.
+        Avoids keyword stuffing and focuses on prose that an LLM can understand semantically.
+        """
+        provider_name = p.get("provider_name") or p.get("name") or "Unknown Provider"
+        service_name = p.get("service_name") or p.get("name") or "General Service"
+        service_type = p.get("service_type") or "General"
+        specialization = p.get("specialization") or ""
+        
+        service_location = p.get("service_location") or p.get("location") or ""
+        provider_location = p.get("provider_location") or ""
+        
+        # Merge locations cleanly without duplicates
+        locations = []
+        if service_location:
+            locations.append(service_location)
+        if provider_location and provider_location.lower() not in service_location.lower():
+            locations.append(provider_location)
+        locations_str = " and ".join(locations).strip() or "Unknown locations"
+        
+        # Get hourly rate & currency
+        hourly_rate = p.get("hourly_rate")
+        if hourly_rate is None:
+            hourly_rate = p.get("pricing", {}).get("hourly_rate") or 0
+        currency = p.get("currency") or p.get("pricing", {}).get("currency") or "PKR"
+        
+        # Parse languages
+        languages_list = p.get("languages", [])
+        if isinstance(languages_list, list) and languages_list:
+            languages_str = ", ".join(languages_list)
+        else:
+            languages_str = str(languages_list) if languages_list else "various languages"
+            
+        description = p.get("description") or "No additional description provided."
+        experience = p.get("experience_years") or 0
+        
+        spec_clause = f"specializing in {specialization}" if specialization else f"offering {service_type} services"
+        exp_clause = f" {experience} years of experience." if experience else ""
+        
+        # Natural language prose
+        text = (
+            f"{provider_name} is a professional service provider located in {locations_str}. "
+            f"They provide {service_name} services, {spec_clause}. "
+            f"Their hourly rate is {hourly_rate} {currency}. "
+            f"They can communicate in {languages_str}.{exp_clause} "
+            f"Description: {description}"
+        )
+        return text
 
     def upsert_service(self, db, service_id):
         """

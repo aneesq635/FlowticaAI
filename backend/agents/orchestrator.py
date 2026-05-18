@@ -227,13 +227,22 @@ class CommunicationAgent(BaseAgent):
                 "Do NOT under any circumstances claim success, state that the request was sent, or say the provider was notified."
             )
 
+        retrieval_confidence = state.get("retrieval_confidence")
+        retrieval_instructions = ""
+        if retrieval_confidence in ["LOW", "NONE"]:
+            retrieval_instructions = (
+                f"\nCRITICAL STATE UPDATE: The latest search for providers yielded {retrieval_confidence} confidence. "
+                "You MUST ask the user to clarify their request or provide more details. DO NOT say 'No providers found' or tell them we don't have the service. "
+                "Instead, say something like 'Could you please provide more details about the exact service you need?' or 'I want to make sure I find the perfect match, could you be a bit more specific?'"
+            )
+
         system_prompt = f"""You are the Frontier Agent of Flowtica AI — a professional, helpful service marketplace assistant.
 
 CONVERSATION CONTEXT:
 - Current Intent: {intent}
 - Conversation Stage: {stage}
 - Session Summary (if resumed): {summary}
-- Iteration: {iteration}{request_creation_instructions}
+- Iteration: {iteration}{request_creation_instructions}{retrieval_instructions}
 
 AVAILABLE DATA:
 - Available Services: {services}

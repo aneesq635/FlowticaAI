@@ -6,6 +6,7 @@ import { Plus, MessageSquare, ChevronRight, Clock, Bot, Loader2, Trash2 } from '
 import { MotiView } from 'moti';
 import { addConversation, setConversations, deleteConversation } from '../../../store/chatSlice';
 import { useAuth } from '../../../components/AuthContext';
+import api from '../../../services/api';
 
 export default function ConversationsList() {
   const router = useRouter();
@@ -20,8 +21,7 @@ export default function ConversationsList() {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://192.168.0.102:5000/conversations/${user.id}`);
-      const data = await res.json();
+      const data = await api.get(`/conversations/${user.id}`);
       if (data.success) {
         dispatch(setConversations(data.conversations));
       }
@@ -38,10 +38,7 @@ export default function ConversationsList() {
 
   const handleDelete = async (id) => {
   try {
-    const res = await fetch(`http://192.168.0.102:5000/conversations/${id}`, {
-      method: 'DELETE',
-    });
-    const data = await res.json();
+    const data = await api.delete(`/conversations/${id}`);
     if (data.success) {
       dispatch(deleteConversation(id));
     }
@@ -54,12 +51,7 @@ export default function ConversationsList() {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const res = await fetch('http://192.168.0.102:5000/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.id, title: `Conversation ${conversations.length + 1}` })
-      });
-      const data = await res.json();
+      const data = await api.post('/conversations', { user_id: user.id, title: `Conversation ${conversations.length + 1}` });
       console.log("data",data);
       if (data.success) {
         dispatch(addConversation(data.conversation));

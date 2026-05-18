@@ -35,6 +35,12 @@ class AgentState(TypedDict):
     provider_candidates: List[Dict[str, Any]]   # KnowledgeAgent → MatchingAgent
     service_request: Annotated[Dict[str, Any], merge_dicts]  # ExtractionAgent → KnowledgeAgent
     
+    # RETRIEVAL ENGINE FIELDS
+    last_search_query: str
+    retrieval_confidence: str
+    retrieval_debug: Annotated[Dict[str, Any], merge_dicts]
+    last_search_results: Annotated[List[Dict[str, Any]], replace_list_if_new]
+    
     # PRODUCTION PATCHABLE FIELDS (Merged instead of overwritten)
     workflow_stage: str
     conversation_stage: str

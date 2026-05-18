@@ -35,7 +35,7 @@ export default function Header() {
   try { pathname = usePathname(); } catch (e) { /* nav not ready */ }
 
   const isDesktop = width >= 1024;
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.0.102:5000';
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
 
   // Safe navigation — no-op if router isn't ready
   const navigate = useCallback((href) => {

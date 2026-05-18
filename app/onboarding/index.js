@@ -9,6 +9,7 @@ import {
 } from "react-native";
 
 import { useLocalSearchParams, useRouter } from "expo-router";
+import api from "../../services/api";
 
 export default function Onboarding() {
   const router = useRouter();
@@ -26,23 +27,11 @@ export default function Onboarding() {
     try {
       setLoading(true);
 
-      const response = await fetch(
-        "http://192.168.0.102:5000/create-user",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            supabase_id,
-            email,
-            user_type: selected,
-          }),
-        }
-      );
-
-      const data = await response.json();
+      const data = await api.post("/create-user", {
+        supabase_id,
+        email,
+        user_type: selected,
+      });
 
       console.log(data);
 
@@ -57,7 +46,7 @@ export default function Onboarding() {
 
       Alert.alert(
         "Error",
-        error.message
+        error.message || "Network request failed"
       );
     } finally {
       setLoading(false);
