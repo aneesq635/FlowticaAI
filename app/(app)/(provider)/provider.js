@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSelector, useDispatch } from 'react-redux';
-import { setProviderProfile } from '../../store/orchestrationSlice';
+import { setProviderProfile } from '../../../store/orchestrationSlice';
 import { 
   ArrowLeft, 
   UserCircle, 
@@ -34,14 +34,16 @@ import {
   Edit2,
   ChevronRight,
   TrendingUp,
-  Layout
+  Layout,
+  User
 } from 'lucide-react-native';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { useAuth } from '../../components/AuthContext';
+import { Card } from '../../../components/ui/Card';
+import { Button } from '../../../components/ui/Button';
+import { useAuth } from '../../../components/AuthContext';
 import { useForm, Controller } from 'react-hook-form';
 import { Dropdown, MultiSelect } from 'react-native-element-dropdown';
 import Modal from 'react-native-modal';
+import socketService from '../../../services/socket';
 
 // --- Constants ---
 const SERVICE_CATEGORIES = [
@@ -174,13 +176,23 @@ export default function ProviderDashboard() {
   const [profile, setProfile] = useState(null);
   const [services, setServices] = useState([]);
   const [isCreatingService, setIsCreatingService] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAvailable, setIsAvailable] = useState(true);
   const [tools, setTools] = useState([]);
   const [toolInput, setToolInput] = useState('');
 
+  // --- Incoming Request States ---
+  const [requests, setRequests] = useState([]);
+  const [isCounterModalOpen, setIsCounterModalOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [counterPrice, setCounterPrice] = useState('');
+  const [counterDate, setCounterDate] = useState('');
+  const [counterTime, setCounterTime] = useState('');
+  const [counterNote, setCounterNote] = useState('');
+
   const { control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm({
-    default_values: {
+    defaultValues: {
       name: '',
       service_type: '',
       specialization: '',
@@ -199,6 +211,107 @@ export default function ProviderDashboard() {
 
   const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.0.102:5000';
 
+  const fetchRequests = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/providers/requests/${user.id}`);
+      const data = await res.json();
+      if (data.success) {
+        setRequests(data.requests || []);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch requests", e);
+    }
+  }, [user, backendUrl]);
+
+  const handleRequestResponse = async (requestId, status, counterDetails = null) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/providers/requests/${requestId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          ...counterDetails
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert("Success", `Request successfully ${status === 'approved' ? 'approved' : status === 'denied' ? 'denied' : 'countered'}.`);
+        fetchRequests();
+      } else {
+        Alert.alert("Error", data.error || "Failed to update request.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "Could not reach the server.");
+    }
+  };
+
+  const isRequestTimePassed = (req) => {
+    try {
+      const reqDate = req.requested_date;
+      const reqTime = req.requested_time;
+      if (!reqDate) return true;
+
+      // Handle suffix removal like '20th May' -> '20 May'
+      let normalizedDate = reqDate.replace(/(st|nd|rd|th)/gi, "");
+      let dateTimeStr = normalizedDate;
+      if (reqTime) {
+        dateTimeStr += ` ${reqTime}`;
+      }
+
+      const parsedDate = new Date(dateTimeStr);
+      if (isNaN(parsedDate.getTime())) {
+        const dateOnly = new Date(normalizedDate);
+        if (isNaN(dateOnly.getTime())) return true;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return today > dateOnly;
+      }
+      return new Date() > parsedDate;
+    } catch (e) {
+      return true;
+    }
+  };
+
+  const handleDeleteRequest = async (req) => {
+    if (req.status === 'approved' && !isRequestTimePassed(req)) {
+      Alert.alert(
+        "Request Locked",
+        "Approved requests cannot be deleted before the scheduled time has passed.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Confirm Delete",
+      "Are you sure you want to delete this request record?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const res = await fetch(`${backendUrl}/api/providers/requests/${req._id}`, {
+                method: 'DELETE'
+              });
+              const data = await res.json();
+              if (data.success) {
+                Alert.alert("Success", "Request record deleted successfully.");
+                fetchRequests();
+              } else {
+                Alert.alert("Error", data.error || "Failed to delete request.");
+              }
+            } catch (err) {
+              Alert.alert("Error", "Could not reach the server.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const fetchProfileData = useCallback(async () => {
     try {
       const res = await fetch(`${backendUrl}/api/providers/profile/${user.id}`);
@@ -209,6 +322,7 @@ export default function ProviderDashboard() {
         setIsAvailable(data.profile.availability ?? true);
         dispatch(setProviderProfile(data.profile));
         if (data.services) setServices(data.services);
+        fetchRequests(); // Also fetch incoming requests
       } else {
         setHasProfile(false);
       }
@@ -217,15 +331,30 @@ export default function ProviderDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, dispatch, backendUrl]);
+  }, [user, dispatch, backendUrl, fetchRequests]);
 
   useEffect(() => {
     if (user?.id) {
       fetchProfileData();
+      
+      // Setup real-time Socket.IO listener
+      const socket = socketService.socket;
+      if (socket) {
+        const handleNewRequest = (data) => {
+          if (data.provider_supabase_id === user.id) {
+            console.log("[PROVIDER DASHBOARD] Real-time socket request alert received!");
+            fetchRequests();
+          }
+        };
+        socket.on('new_service_request', handleNewRequest);
+        return () => {
+          socket.off('new_service_request', handleNewRequest);
+        };
+      }
     } else {
       setIsLoading(false);
     }
-  }, [user, fetchProfileData]);
+  }, [user, fetchProfileData, fetchRequests]);
 
   const onSetupProfile = async (data) => {
     setIsSubmitting(true);
@@ -285,8 +414,20 @@ export default function ProviderDashboard() {
       Alert.alert("Error", "Backend unreachable.");
     }
   };
+  
+  const onFormError = (errors) => {
+    console.warn("[FORM ERROR] Validation failed:", errors);
+    const errorFields = Object.keys(errors).map(key => {
+      const fieldName = key.replace('_', ' ');
+      return fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+    });
+    Alert.alert(
+      "Validation Required", 
+      `Please fill in the following fields correctly:\n\n• ${errorFields.join('\n• ')}`
+    );
+  };
 
-  const onAddService = async (data) => {
+  const onSaveService = async (data) => {
     setIsSubmitting(true);
     const payload = {
       provider_supabase_id: user?.id || 'UNKNOWN',
@@ -313,24 +454,100 @@ export default function ProviderDashboard() {
     };
 
     try {
-      const response = await fetch(`${backendUrl}/api/providers/service`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const resData = await response.json();
-      if (resData.success) {
-        Alert.alert("Success", "Service published successfully!");
-        setServices(prev => [...prev, payload]);
-        setIsCreatingService(false);
-        reset();
-        setTools([]);
+      if (editingServiceId) {
+        // UPDATE MODE
+        const response = await fetch(`${backendUrl}/api/providers/services/${editingServiceId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const resData = await response.json();
+        if (resData.success) {
+          Alert.alert("Success", "Service listing updated successfully!");
+          // Refresh list
+          fetchProfileData();
+          setIsCreatingService(false);
+          setEditingServiceId(null);
+          reset();
+          setTools([]);
+        } else {
+          Alert.alert("Error", resData.error || "Failed to update service.");
+        }
+      } else {
+        // CREATE MODE
+        const response = await fetch(`${backendUrl}/api/providers/service`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const resData = await response.json();
+        if (resData.success) {
+          Alert.alert("Success", "Service published successfully!");
+          // Append with server-provided ID
+          const newSvc = { ...payload, _id: resData.id };
+          setServices(prev => [...prev, newSvc]);
+          setIsCreatingService(false);
+          reset();
+          setTools([]);
+        } else {
+          Alert.alert("Error", resData.error || "Failed to create service.");
+        }
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to add service.");
+      Alert.alert("Error", editingServiceId ? "Failed to update service." : "Failed to add service.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const onDeleteService = async (serviceId) => {
+    if (!serviceId) return;
+    Alert.alert(
+      "Confirm Delete",
+      "Are you sure you want to permanently delete this service listing from the marketplace?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete Listing", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const res = await fetch(`${backendUrl}/api/providers/services/${serviceId}`, {
+                method: 'DELETE'
+              });
+              const data = await res.json();
+              if (data.success) {
+                Alert.alert("Success", "Service listing deleted successfully.");
+                setServices(prev => prev.filter(s => s._id !== serviceId));
+              } else {
+                Alert.alert("Error", data.error || "Failed to delete service.");
+              }
+            } catch (err) {
+              Alert.alert("Error", "Could not reach backend server.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditServicePress = (svc) => {
+    setEditingServiceId(svc._id);
+    reset({
+      name: svc.name || '',
+      service_type: svc.service_type || '',
+      specialization: svc.specialization || '',
+      description: svc.description || '',
+      location: svc.location || '',
+      hourly_rate: String(svc.pricing?.hourly_rate || ''),
+      currency: svc.pricing?.currency || 'PKR',
+      experience_years: String(svc.experience_years || ''),
+      languages: svc.languages || [],
+      phone: svc.phone || '',
+      email: svc.email || user?.email || '',
+    });
+    setTools(svc.tools || []);
+    setIsCreatingService(true);
   };
 
   const addTool = () => {
@@ -445,10 +662,19 @@ export default function ProviderDashboard() {
             </View>
           </View>
 
-          <View className="flex-row mb-6 py-4 border-y border-slate-50">
-            <StatItem label="Jobs" value={services.reduce((acc, s) => acc + (s.completed_jobs || 0), 0)} icon={Briefcase} />
-            <StatItem label="Services" value={services.length} icon={Layout} />
-            <StatItem label="Rating" value={profile?.rating || "5.0"} icon={Award} />
+          {/* 6 Critical Metrics dynamic grid */}
+          <View className="mb-6 pt-4 border-t border-slate-100/80">
+            <Text className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mb-3 text-center">Business Metrics & Dynamic Insights</Text>
+            <View className="flex-row justify-between mb-4">
+              <StatItem label="Total Jobs" value={profile?.total_jobs ?? 0} icon={Briefcase} />
+              <StatItem label="Completed" value={profile?.completed_jobs ?? 0} icon={Award} />
+              <StatItem label="Active Req" value={profile?.active_requests ?? 0} icon={Layout} />
+            </View>
+            <View className="flex-row justify-between">
+              <StatItem label="Earnings" value={`${profile?.total_earnings ?? 0} PKR`} icon={DollarSign} />
+              <StatItem label="Hours" value={`${profile?.total_hours_worked ?? 0} hrs`} icon={Clock} />
+              <StatItem label="Live Rating" value={profile?.rating || "5.0"} icon={Star} />
+            </View>
           </View>
 
           <View className="flex-row items-center justify-between">
@@ -467,6 +693,141 @@ export default function ProviderDashboard() {
           </View>
         </Card>
 
+        {/* Incoming Requests Section */}
+        <View className="mb-6">
+          <View className="flex-row justify-between items-center mb-4">
+            <View>
+              <Text className="text-lg font-black text-slate-900">Incoming Requests</Text>
+              <Text className="text-[10px] text-slate-500 font-bold uppercase">Assigned by AI Orchestrator</Text>
+            </View>
+            {requests.length > 0 && (
+              <View className="bg-red-500 px-2 py-0.5 rounded-full">
+                <Text className="text-white text-[10px] font-black">{requests.filter(r => r.status === 'pending').length} Active</Text>
+              </View>
+            )}
+          </View>
+
+          {requests.length === 0 ? (
+            <Card className="bg-white p-6 rounded-3xl border-0 shadow-sm items-center justify-center py-8">
+              <Text className="text-slate-400 font-bold text-sm">No incoming service requests.</Text>
+            </Card>
+          ) : (
+            <View>
+              {requests.map((req, idx) => {
+                const getStatusColor = (status) => {
+                  switch (status) {
+                    case 'approved': return 'bg-green-50 text-green-700 border-green-100';
+                    case 'denied': return 'bg-red-50 text-red-700 border-red-100';
+                    case 'counter_offer': return 'bg-orange-50 text-orange-700 border-orange-100';
+                    default: return 'bg-blue-50 text-blue-700 border-blue-100';
+                  }
+                };
+
+                return (
+                  <Card key={req._id || idx} className="mb-4 p-5 bg-white border-0 shadow-sm rounded-3xl">
+                    <View className="flex-row justify-between items-start mb-3">
+                      <View className="flex-1 mr-2 flex-row items-center">
+                        <View className="w-10 h-10 rounded-full bg-blue-500/10 items-center justify-center mr-3 border border-blue-500/20">
+                          <User size={18} color="#3b82f6" />
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-base font-black text-slate-900">{req.customer_name || 'Valued Client'}</Text>
+                          <Text className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{req.customer_email || req.contact_email || 'No email provided'}</Text>
+                        </View>
+                      </View>
+                      <View className="flex-row items-center space-x-2">
+                        <View className={`px-3 py-1 rounded-full border ${getStatusColor(req.status)}`}>
+                          <Text className="text-[9px] font-black uppercase tracking-tight">{req.status}</Text>
+                        </View>
+                        {(req.status === 'approved' || req.status === 'denied') && (
+                          <TouchableOpacity 
+                            onPress={() => handleDeleteRequest(req)} 
+                            className={`p-1.5 rounded-full ${req.status === 'approved' && !isRequestTimePassed(req) ? 'bg-slate-100 opacity-40' : 'bg-red-50'}`}
+                          >
+                            <Trash2 size={12} color={req.status === 'approved' && !isRequestTimePassed(req) ? '#64748b' : '#ef4444'} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    <View className="space-y-2 py-3 border-y border-slate-50 mb-4">
+                      <View className="mb-2 bg-slate-50 p-3 rounded-2xl">
+                        <Text className="text-[9px] text-slate-400 font-bold uppercase mb-1">Service Requested</Text>
+                        <Text className="text-xs text-slate-700 font-black">{req.service_type} ({req.specialization})</Text>
+                      </View>
+
+                      <View className="flex-row items-center">
+                        <MapPin size={12} color="#64748b" />
+                        <Text className="text-xs text-slate-600 ml-2 font-bold">{req.location}</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <DollarSign size={12} color="#64748b" />
+                        <Text className="text-xs text-slate-600 ml-2 font-bold">
+                          Offered Rate: {req.offered_price} PKR/USD
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <Clock size={12} color="#64748b" />
+                        <Text className="text-xs text-slate-600 ml-2 font-bold">
+                          Time Requested: {req.requested_date} at {req.requested_time}
+                        </Text>
+                      </View>
+                      {(req.customer_phone || req.contact_phone) && (req.customer_phone !== 'Not provided' || req.contact_phone !== 'Not provided') && (
+                        <View className="mt-2 pt-2 border-t border-dashed border-slate-100">
+                          <Text className="text-[9px] text-slate-400 font-bold uppercase mb-1">Client Contact</Text>
+                          <Text className="text-xs text-slate-600 font-medium">📞 {req.customer_phone && req.customer_phone !== 'Not provided' ? req.customer_phone : req.contact_phone}</Text>
+                        </View>
+                      )}
+                      {req.status === 'counter_offer' && (
+                        <View className="mt-2 p-3 bg-orange-50/50 rounded-2xl border border-orange-100/50">
+                          <Text className="text-[9px] text-orange-700 font-black uppercase mb-1">Counter Offer Sent</Text>
+                          <Text className="text-xs text-slate-600 font-bold">Price: {req.counter_price} PKR/USD</Text>
+                          <Text className="text-xs text-slate-600 font-bold">Time: {req.counter_date} at {req.counter_time}</Text>
+                          {req.counter_note ? (
+                            <Text className="text-xs text-slate-500 italic mt-1 font-medium">Note: "{req.counter_note}"</Text>
+                          ) : null}
+                        </View>
+                      )}
+                    </View>
+
+                    {(req.status === 'pending' || req.status === 'counter_offer') && (
+                      <View className="flex-row space-x-2">
+                        <TouchableOpacity 
+                          onPress={() => handleRequestResponse(req._id, 'approved')}
+                          className="flex-1 bg-green-600 py-3 rounded-2xl items-center justify-center shadow-sm"
+                        >
+                          <Text className="text-white font-black text-xs">Approve</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          onPress={() => {
+                            setSelectedRequest(req);
+                            setCounterPrice(String(req.offered_price || ''));
+                            setCounterDate(req.requested_date || '');
+                            setCounterTime(req.requested_time || '');
+                            setCounterNote('');
+                            setIsCounterModalOpen(true);
+                          }}
+                          className="flex-1 bg-slate-800 py-3 rounded-2xl items-center justify-center shadow-sm"
+                        >
+                          <Text className="text-white font-black text-xs">Counter</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                          onPress={() => handleRequestResponse(req._id, 'denied')}
+                          className="flex-1 bg-red-100 py-3 rounded-2xl items-center justify-center"
+                        >
+                          <Text className="text-red-700 font-black text-xs">Deny</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </Card>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
         {/* Services Header */}
         <View className="flex-row justify-between items-center mb-4">
           <View>
@@ -474,7 +835,24 @@ export default function ProviderDashboard() {
             <Text className="text-[10px] text-slate-500 font-bold uppercase">Active Listings</Text>
           </View>
           <TouchableOpacity 
-            onPress={() => setIsCreatingService(true)} 
+            onPress={() => {
+              setEditingServiceId(null);
+              reset({
+                name: '',
+                service_type: '',
+                specialization: '',
+                description: '',
+                location: '',
+                hourly_rate: '',
+                currency: 'PKR',
+                experience_years: '',
+                languages: [],
+                phone: '',
+                email: user?.email || '',
+              });
+              setTools([]);
+              setIsCreatingService(true);
+            }} 
             className="bg-black flex-row items-center px-4 py-2 rounded-2xl shadow-lg"
           >
             <Plus size={16} color="#fff" strokeWidth={3} />
@@ -493,8 +871,8 @@ export default function ProviderDashboard() {
               <ServiceCard 
                 key={index} 
                 service={svc} 
-                onEdit={() => Alert.alert("Coming Soon", "Edit functionality is in development.")}
-                onDelete={() => Alert.alert("Confirm", "Delete this service?", [{ text: 'Cancel' }, { text: 'Delete', style: 'destructive' }])}
+                onEdit={() => handleEditServicePress(svc)}
+                onDelete={() => onDeleteService(svc._id)}
               />
             ))}
           </View>
@@ -529,8 +907,8 @@ export default function ProviderDashboard() {
           
           <View className="flex-row justify-between items-center mb-6">
             <View>
-              <Text className="text-2xl font-black text-slate-900">New Service</Text>
-              <Text className="text-slate-500 font-medium">Create a new marketplace listing</Text>
+              <Text className="text-2xl font-black text-slate-900">{editingServiceId ? 'Edit Service' : 'New Service'}</Text>
+              <Text className="text-slate-500 font-medium">{editingServiceId ? 'Modify your marketplace listing' : 'Create a new marketplace listing'}</Text>
             </View>
             <TouchableOpacity 
               onPress={() => setIsCreatingService(false)}
@@ -770,9 +1148,100 @@ export default function ProviderDashboard() {
               </View>
 
               <Button 
-                title={isSubmitting ? "Publishing..." : "Launch Service"} 
-                onPress={handleSubmit(onAddService)} 
+                title={isSubmitting ? (editingServiceId ? "Saving..." : "Publishing...") : (editingServiceId ? "Save Changes" : "Launch Service")} 
+                onPress={handleSubmit(onSaveService, onFormError)} 
                 disabled={isSubmitting}
+                className="py-5 rounded-3xl bg-black mb-10 shadow-2xl" 
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Modern Approve with Changes / Counter Offer Modal */}
+      <Modal 
+        isVisible={isCounterModalOpen}
+        onBackdropPress={() => setIsCounterModalOpen(false)}
+        style={{ margin: 0, justifyContent: 'flex-end' }}
+        avoidKeyboard
+      >
+        <View className="bg-white rounded-t-[40px] p-6 max-h-[85%]">
+          <View className="w-12 h-1.5 bg-slate-200 rounded-full self-center mb-6" />
+          
+          <View className="flex-row justify-between items-center mb-6">
+            <View>
+              <Text className="text-2xl font-black text-slate-900">Approve with Changes</Text>
+              <Text className="text-slate-500 font-medium">Send counter-offer to {selectedRequest?.customer_name}</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => setIsCounterModalOpen(false)}
+              className="p-2 bg-slate-50 rounded-full"
+            >
+              <X size={20} color="#000" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} className="mb-6">
+            <View className="space-y-6">
+              <View>
+                <Text className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 ml-1">Counter Price (PKR/USD)</Text>
+                <TextInput 
+                  className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-slate-900 font-bold" 
+                  placeholder="e.g. 35"
+                  keyboardType="numeric"
+                  value={counterPrice}
+                  onChangeText={setCounterPrice}
+                />
+              </View>
+
+              <View className="flex-row space-x-3">
+                <View className="flex-1 mr-1.5">
+                  <Text className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 ml-1">New Date</Text>
+                  <TextInput 
+                    className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-slate-900 font-medium" 
+                    placeholder="YYYY-MM-DD"
+                    value={counterDate}
+                    onChangeText={setCounterDate}
+                  />
+                </View>
+                <View className="flex-1 ml-1.5">
+                  <Text className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 ml-1">New Time</Text>
+                  <TextInput 
+                    className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-slate-900 font-medium" 
+                    placeholder="HH:MM"
+                    value={counterTime}
+                    onChangeText={setCounterTime}
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 ml-1">Message to Customer (Optional)</Text>
+                <TextInput 
+                  className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-slate-900 font-medium h-24" 
+                  placeholder="Explain your changes..."
+                  multiline
+                  textAlignVertical="top"
+                  value={counterNote}
+                  onChangeText={setCounterNote}
+                />
+              </View>
+
+              <Button 
+                title="Send Counter Offer" 
+                onPress={() => {
+                  if (!counterPrice || !counterDate || !counterTime) {
+                    Alert.alert("Required Fields", "Please enter new Price, Date and Time.");
+                    return;
+                  }
+                  handleRequestResponse(selectedRequest._id, 'counter_offer', {
+                    counter_price: Number(counterPrice),
+                    counter_date: counterDate,
+                    counter_time: counterTime,
+                    counter_note: counterNote
+                  });
+                  setIsCounterModalOpen(false);
+                }} 
                 className="py-5 rounded-3xl bg-black mb-10 shadow-2xl" 
               />
             </View>

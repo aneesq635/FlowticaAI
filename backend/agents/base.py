@@ -17,20 +17,22 @@ class BaseAgent(ABC):
         )
 
     def log_action(self, state: AgentState, action: str, reasoning: str = ""):
+        from core.logger import safe_text
         log_entry = {
             "timestamp": datetime.datetime.now().isoformat(),
             "agent": self.name,
-            "action": action,
-            "reasoning": reasoning
+            "action": safe_text(action),
+            "reasoning": safe_text(reasoning)
         }
         # We'll return these to be added to the state via LangGraph's Annotated operator.add
         return log_entry
 
     def create_trace(self, reasoning: str, tools: List[str] = None):
+        from core.logger import safe_text
         return {
             "timestamp": datetime.datetime.now().isoformat(),
             "agent": self.name,
-            "reasoning": reasoning,
+            "reasoning": safe_text(reasoning),
             "tools": tools or []
         }
 

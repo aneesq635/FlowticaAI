@@ -3,10 +3,10 @@ import { View, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Pl
 import { useSelector, useDispatch } from 'react-redux';
 import { MotiView, AnimatePresence } from 'moti';
 import { Send, Paperclip, Bot, User, Activity, ChevronDown, ChevronUp, Sparkles } from 'lucide-react-native';
-import socketService from '../../services/socket';
-import { addMessage } from '../../store/chatSlice';
-import { Typography } from '../../components/ui/Typography';
-import { Card } from '../../components/ui/Card';
+import socketService from '../../../services/socket';
+import { addMessage } from '../../../store/chatSlice';
+import { Typography } from '../../../components/ui/Typography';
+import { Card } from '../../../components/ui/Card';
 
 const ChatMessage = ({ message }) => {
   const isUser = message.role === 'user';
@@ -113,11 +113,32 @@ const ChatPanel = () => {
   }, [messages]);
 
   const handleSend = () => {
-    if (!input.trim() || !activeConversationId) return;
-    const userMessage = { role: 'user', content: input };
-    dispatch(addMessage({ conversationId: activeConversationId, message: userMessage }));
-    socketService.sendMessage(input, activeConversationId);
-    setInput('');
+    console.log(`\n[CHAT PANEL] Send button clicked.`);
+    console.log(`[CHAT PANEL] Input Text: "${input}"`);
+    console.log(`[CHAT PANEL] Active Conversation ID: ${activeConversationId}`);
+    
+    if (!input.trim()) {
+      console.warn('[CHAT PANEL WARNING] Input is empty, ignoring send.');
+      return;
+    }
+    if (!activeConversationId) {
+      console.error('[CHAT PANEL ERROR] Active Conversation ID is null/missing! Cannot send.');
+      return;
+    }
+
+    try {
+      const userMessage = { role: 'user', content: input.trim() };
+      console.log('[CHAT PANEL] Dispatching user message to Redux store:', JSON.stringify(userMessage));
+      dispatch(addMessage({ conversationId: activeConversationId, message: userMessage }));
+      
+      console.log('[CHAT PANEL] Handing over message transmission to socketService...');
+      socketService.sendMessage(input.trim(), activeConversationId);
+      
+      console.log('[CHAT PANEL] Clearing message input field.');
+      setInput('');
+    } catch (err) {
+      console.error('[CHAT PANEL ERROR] Exception inside handleSend:', err);
+    }
   };
 
   return (

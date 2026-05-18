@@ -24,8 +24,8 @@ import {
 } from 'lucide-react-native';
 import { useSelector } from 'react-redux';
 import { MotiView } from 'moti';
-import { Typography } from '../../components/ui/Typography';
-import { Card } from '../../components/ui/Card';
+import { Typography } from '../../../components/ui/Typography';
+import { Card } from '../../../components/ui/Card';
 
 const AgentCard = ({ name, role, icon: Icon, description, delay = 0 }) => {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';

@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { useSelector, useDispatch } from 'react-redux';
 import { Plus, MessageSquare, ChevronRight, Clock, Bot, Loader2, Trash2 } from 'lucide-react-native';
 import { MotiView } from 'moti';
-import { addConversation, setConversations, deleteConversation } from '../../store/chatSlice';
-import { useAuth } from '../../components/AuthContext';
+import { addConversation, setConversations, deleteConversation } from '../../../store/chatSlice';
+import { useAuth } from '../../../components/AuthContext';
 
 export default function ConversationsList() {
   const router = useRouter();

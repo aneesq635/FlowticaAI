@@ -2,27 +2,27 @@ import React from 'react';
 import { View, ScrollView, useWindowDimensions, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MotiView, MotiText } from 'moti';
-import { 
-  Bot, 
-  Sparkles, 
-  Zap, 
-  Shield, 
-  ChevronRight, 
-  Search, 
-  Users, 
-  Languages, 
-  Calendar, 
-  DollarSign, 
+import {
+  Bot,
+  Sparkles,
+  Zap,
+  Shield,
+  ChevronRight,
+  Search,
+  Users,
+  Languages,
+  Calendar,
+  DollarSign,
   CheckCircle,
   Activity,
   ArrowRight,
   Briefcase
 } from 'lucide-react-native';
 import { useSelector } from 'react-redux';
-import { useAuth } from '../components/AuthContext';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
-import { Typography } from '../components/ui/Typography';
+import { useAuth } from '../../components/AuthContext';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { Typography } from '../../components/ui/Typography';
 
 const FeatureCard = ({ icon: Icon, title, description, delay = 0 }) => {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
@@ -51,7 +51,7 @@ export default function LandingPage() {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
 
   return (
-    <ScrollView 
+    <ScrollView
       className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
       showsVerticalScrollIndicator={false}
     >
@@ -83,7 +83,7 @@ export default function LandingPage() {
           className="absolute -bottom-20 -left-20 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"
         />
 
-        <MotiView 
+        <MotiView
           from={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: 'timing', duration: 800 }}
@@ -93,42 +93,42 @@ export default function LandingPage() {
             <Sparkles size={14} color="#3b82f6" />
             <Typography variant="xs" className="text-blue-600 ml-2 font-black">AI Marketplace v2.0</Typography>
           </View>
-          
+
           <Typography variant="h1" className="text-center mb-6 px-4">
             Next-Gen {"\n"}
             <Typography variant="h1" className="text-blue-600">AI Service</Typography> Orchestrator
           </Typography>
 
           <Typography variant="body" className="text-center max-w-2xl px-6 mb-12 opacity-80">
-            The world's first multi-agent service marketplace. 
-            Connect with verified human providers through an autonomous AI orchestration engine 
+            The world's first multi-agent service marketplace.
+            Connect with verified human providers through an autonomous AI orchestration engine
             that handles everything from discovery to final booking.
           </Typography>
 
           <View className={`flex-row space-x-4 ${isDesktop ? '' : 'flex-col space-x-0 space-y-4'}`}>
             {user ? (
               <>
-                <Button 
-                  title="Find Services" 
-                  size="lg" 
-                  icon={Search} 
-                  onPress={() => router.push('/conversations')} 
+                <Button
+                  title="Find Services"
+                  size="lg"
+                  icon={Search}
+                  onPress={() => router.push('/conversations')}
                 />
-                <Button 
-                  title="Provider Hub" 
-                  variant="secondary" 
-                  size="lg" 
-                  icon={Briefcase} 
-                  onPress={() => router.push('/provider')} 
+                <Button
+                  title="Provider Hub"
+                  variant="secondary"
+                  size="lg"
+                  icon={Briefcase}
+                  onPress={() => router.push('/provider')}
                 />
               </>
             ) : (
-              <Button 
-                title="Get Started Now" 
-                size="lg" 
-                icon={ArrowRight} 
+              <Button
+                title="Get Started Now"
+                size="lg"
+                icon={ArrowRight}
                 iconPosition="right"
-                onPress={() => router.push('/auth')} 
+                onPress={() => router.push('/auth')}
               />
             )}
           </View>
@@ -143,37 +143,37 @@ export default function LandingPage() {
         </View>
 
         <View className={`flex-row flex-wrap justify-center ${isDesktop ? 'px-10' : ''}`}>
-          <FeatureCard 
+          <FeatureCard
             icon={Search}
             title="AI Discovery"
             description="Our RAG-powered Knowledge Agents scan the marketplace to find the perfect service matches for your specific needs."
             delay={100}
           />
-          <FeatureCard 
+          <FeatureCard
             icon={Users}
             title="Smart Matching"
             description="Proprietary matching logic pairs you with providers based on skill, location, availability, and historical performance."
             delay={200}
           />
-          <FeatureCard 
+          <FeatureCard
             icon={Languages}
             title="Multilingual Support"
             description="Agents communicate fluently in English, Urdu, Punjabi, and Pashto to ensure seamless interaction across cultures."
             delay={300}
           />
-          <FeatureCard 
+          <FeatureCard
             icon={Calendar}
             title="Auto-Scheduling"
             description="The Scheduling Agent manages provider calendars and your preferences to find the optimal appointment window."
             delay={400}
           />
-          <FeatureCard 
+          <FeatureCard
             icon={DollarSign}
             title="Dynamic Pricing"
             description="Real-time quote generation based on service complexity, urgency, and market demand for total transparency."
             delay={500}
           />
-          <FeatureCard 
+          <FeatureCard
             icon={Activity}
             title="Live Orchestration"
             description="Watch the agents collaborate in real-time. Transparent execution logs show every step of the reasoning process."

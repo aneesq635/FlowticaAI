@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, useWindowDimensions, TouchableOpacity, Text } from 'react-native';
-import Sidebar from '../../components/Sidebar';
+import Sidebar from '../../../components/Sidebar';
 import ChatPanel from '../chat/ChatPanel';
-import OrchestrationPanel from '../../components/orchestration/OrchestrationPanel';
+import OrchestrationPanel from '../../../components/orchestration/OrchestrationPanel';
 import { LayoutPanelLeft, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { MotiView, AnimatePresence as MotiAnimatePresence } from 'moti';
 import { useSelector, useDispatch } from 'react-redux';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
-import { setActiveConversation, setMessages } from '../../store/chatSlice';
-import { hydrateState } from '../../store/orchestrationSlice';
+import { setActiveConversation, setMessages } from '../../../store/chatSlice';
+import { hydrateState } from '../../../store/orchestrationSlice';
 
 const AnimatePresence = MotiAnimatePresence;
 
