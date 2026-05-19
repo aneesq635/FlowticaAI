@@ -27,14 +27,15 @@ import { Typography } from '../../components/ui/Typography';
 const FeatureCard = ({ icon: Icon, title, description, delay = 0 }) => {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
   return (
-    <Card className="flex-1 min-w-[300px] m-2">
+    <Card className={`w-[300px] m-2 ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
       <MotiView
         from={{ opacity: 0, translateY: 20 }}
         animate={{ opacity: 1, translateY: 0 }}
         transition={{ type: 'timing', duration: 1000, delay }}
       >
-        <View className={`w-14 h-14 rounded-2xl items-center justify-center mb-6 ${isDark ? 'bg-blue-600/10' : 'bg-blue-50'}`}>
-          <Icon size={28} color="#3b82f6" />
+        {/* ✅ Dark mode: light bg + white icon */}
+        <View className={`w-14 h-14 rounded-2xl items-center justify-center mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
+          <Icon size={28} color={isDark ? '#f1f5f9' : '#0f172a'} />
         </View>
         <Typography variant="h4" className="mb-3">{title}</Typography>
         <Typography variant="body" className="text-sm opacity-70 leading-relaxed">{description}</Typography>
@@ -49,7 +50,21 @@ export default function LandingPage() {
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
-
+   const [dbUser, setDbUser] = React.useState(null);
+    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
+   const fetchUser = async () => {
+    try {
+      if (!user?.id) return;
+      const response = await fetch(`${backendUrl}/user/${user.id}`);
+      const data = await response.json();
+      if (data?.user) setDbUser(data.user);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+    React.useEffect(() => {
+    fetchUser();
+  }, [user?.id]);
   return (
     <ScrollView
       className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
@@ -57,30 +72,16 @@ export default function LandingPage() {
     >
       {/* Hero Section */}
       <View className="px-6 pt-20 pb-32 items-center overflow-hidden relative">
-        {/* Animated Background Blobs */}
+        {/* Animated Background Blobs — toned down in dark mode */}
         <MotiView
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: ['0deg', '90deg', '0deg'],
-          }}
-          transition={{
-            loop: true,
-            duration: 10000,
-            type: 'timing',
-          }}
-          className="absolute -top-20 -right-20 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl"
+          animate={{ scale: [1, 1.2, 1], rotate: ['0deg', '90deg', '0deg'] }}
+          transition={{ loop: true, duration: 10000, type: 'timing' }}
+          className={`absolute -top-20 -right-20 w-96 h-96 rounded-full blur-3xl ${isDark ? 'bg-slate-800/20' : 'bg-blue-600/10'}`}
         />
         <MotiView
-          animate={{
-            scale: [1, 1.3, 1],
-            rotate: ['0deg', '-90deg', '0deg'],
-          }}
-          transition={{
-            loop: true,
-            duration: 15000,
-            type: 'timing',
-          }}
-          className="absolute -bottom-20 -left-20 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"
+          animate={{ scale: [1, 1.3, 1], rotate: ['0deg', '-90deg', '0deg'] }}
+          transition={{ loop: true, duration: 15000, type: 'timing' }}
+          className={`absolute -bottom-20 -left-20 w-80 h-80 rounded-full blur-3xl ${isDark ? 'bg-slate-700/20' : 'bg-purple-600/10'}`}
         />
 
         <MotiView
@@ -89,31 +90,39 @@ export default function LandingPage() {
           transition={{ type: 'timing', duration: 800 }}
           className="items-center z-10"
         >
-          <View className={`flex-row items-center px-4 py-2 rounded-full border mb-8 ${isDark ? 'bg-blue-600/10 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
-            <Sparkles size={14} color="#3b82f6" />
-            <Typography variant="xs" className="text-blue-600 ml-2 font-black">AI Marketplace v2.0</Typography>
+          <View className={`flex-row items-center px-4 py-2 rounded-full border mb-8 
+  ${isDark ? 'bg-slate-800 border-slate-600' : 'bg-slate-100 border-slate-200'}`}>
+            <Sparkles size={14} color={isDark ? '#f1f5f9' : '#0f172a'} />
+            <Typography variant="xs" className={`ml-2 font-black ${isDark ? 'text-slate-100' : 'text-slate-700'}`}>
+              AI Marketplace v2.0
+            </Typography>
           </View>
 
           <Typography variant="h1" className="text-center mb-6 px-4">
             Next-Gen {"\n"}
-            <Typography variant="h1" className="text-blue-600">AI Service</Typography> Orchestrator
+            <Typography variant="h1" className={isDark ? 'text-slate-300' : 'text-slate-800'}>
+              AI Service
+            </Typography>{' '}
+            Orchestrator
           </Typography>
 
           <Typography variant="body" className="text-center max-w-2xl px-6 mb-12 opacity-80">
-            The world's first multi-agent service marketplace.
-            Connect with verified human providers through an autonomous AI orchestration engine
-            that handles everything from discovery to final booking.
+            The world's first multi-agent service marketplace. Connect with verified human providers
+            through an autonomous AI orchestration engine that handles everything from discovery to
+            final booking.
           </Typography>
 
+          {/* ✅ Button logic: customer → Find Services, provider → Provider Hub, guest → Get Started */}
           <View className={`flex-row space-x-4 ${isDesktop ? '' : 'flex-col space-x-0 space-y-4'}`}>
-            {user ? (
-              <>
+            {dbUser ? (
+              dbUser?.user_type === 'customer' ? (
                 <Button
                   title="Find Services"
                   size="lg"
                   icon={Search}
                   onPress={() => router.push('/conversations')}
                 />
+              ) : (
                 <Button
                   title="Provider Hub"
                   variant="secondary"
@@ -121,7 +130,7 @@ export default function LandingPage() {
                   icon={Briefcase}
                   onPress={() => router.push('/provider')}
                 />
-              </>
+              )
             ) : (
               <Button
                 title="Get Started Now"
@@ -139,10 +148,13 @@ export default function LandingPage() {
       <View className="px-6 pb-20">
         <View className="items-center mb-16">
           <Typography variant="h2" className="text-center mb-4">Autonomous Intelligence</Typography>
-          <Typography variant="body" className="text-center opacity-60">Powered by advanced Multi-Agent Orchestration</Typography>
+          <Typography variant="body" className="text-center opacity-60">
+            Powered by advanced Multi-Agent Orchestration
+          </Typography>
         </View>
 
-        <View className={`flex-row flex-wrap justify-center ${isDesktop ? 'px-10' : ''}`}>
+        {/* ✅ Fixed card layout — wrapping rows */}
+        <View className="flex-row flex-wrap justify-center">
           <FeatureCard
             icon={Search}
             title="AI Discovery"
@@ -183,7 +195,7 @@ export default function LandingPage() {
       </View>
 
       {/* Why Flowtica Section */}
-      <View className={`px-6 py-20 ${isDark ? 'bg-slate-900/50' : 'bg-blue-50/50'} mb-20`}>
+      <View className={`px-6 py-20 mb-20 ${isDark ? 'bg-slate-950' : 'bg-blue-50/50'}`}>
         <View className={`flex-row items-center ${isDesktop ? 'space-x-20' : 'flex-col space-y-12'}`}>
           <View className="flex-1">
             <Typography variant="h2" className="mb-6">Why Flowtica AI?</Typography>
@@ -191,10 +203,10 @@ export default function LandingPage() {
               {[
                 { t: "Verified Human Network", d: "Every provider is vetted for quality and reliability." },
                 { t: "Autonomous Workflows", d: "No more searching. Tell the AI what you need and let it work." },
-                { t: "Secure Transactions", d: "End-to-end encryption for all bookings and coordination." }
+                { t: "Secure Transactions", d: "End-to-end encryption for all bookings and coordination." },
               ].map((item, i) => (
                 <View key={i} className="flex-row items-start">
-                  <View className="bg-blue-600 rounded-full p-1 mt-1 mr-4">
+                  <View className={`rounded-full p-1 mt-1 mr-4 ${isDark ? 'bg-slate-600' : 'bg-slate-800'}`}>
                     <CheckCircle size={16} color="#fff" />
                   </View>
                   <View>
@@ -205,14 +217,16 @@ export default function LandingPage() {
               ))}
             </View>
           </View>
+
           <View className={`flex-1 items-center justify-center ${isDesktop ? '' : 'w-full'}`}>
             <MotiView
               from={{ rotate: '0deg' }}
               animate={{ rotate: '360deg' }}
               transition={{ loop: true, duration: 20000, type: 'timing' }}
-              className={`w-64 h-64 border-2 border-dashed rounded-full items-center justify-center ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
+              className={`w-64 h-64 border-2 border-dashed rounded-full items-center justify-center ${isDark ? 'border-slate-700' : 'border-slate-300'}`}
             >
-              <View className={`w-48 h-48 rounded-full items-center justify-center bg-blue-600 shadow-2xl shadow-blue-500/50`}>
+              <View className={`w-48 h-48 rounded-full items-center justify-center shadow-2xl 
+  ${isDark ? 'bg-slate-600' : 'bg-slate-800'}`}>
                 <Bot size={80} color="#fff" />
               </View>
             </MotiView>
@@ -221,7 +235,7 @@ export default function LandingPage() {
       </View>
 
       {/* Footer */}
-      <View className="px-6 py-12 items-center border-t border-slate-100 dark:border-slate-900">
+      <View className={`px-6 py-12 items-center border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
         <Typography variant="h4" className="mb-4">Flowtica AI</Typography>
         <Typography variant="xs" className="text-center opacity-40">
           Built with Antigravity • Orchestrated by LangGraph {"\n"}

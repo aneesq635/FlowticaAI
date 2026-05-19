@@ -19,6 +19,7 @@ export default function OrchestratorDashboard() {
   const dispatch = useDispatch();
   const { width } = useWindowDimensions();
   const [isOrchestrationExpanded, setIsOrchestrationExpanded] = useState(width > 1200);
+  const isDark = useSelector(state => state.orchestration.theme) === 'dark';
 
   useEffect(() => {
     const hydrate = async () => {
@@ -41,107 +42,65 @@ export default function OrchestratorDashboard() {
   const isDesktop = width > 1024;
   const { isChatVisible } = useSelector(state => state.orchestration);
 
-  return (
-    <View style={styles.container}>
-      {/* Main Content Area */}
-      <View style={styles.mainContent}>
-        <View style={styles.header}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity 
-            style={styles.expandButton}
-            onPress={() => setIsOrchestrationExpanded(!isOrchestrationExpanded)}
-          >
-            <Text style={styles.expandButtonText}>
-              {isOrchestrationExpanded ? 'HIDE ENGINE' : 'SHOW ENGINE'}
-            </Text>
-            {isOrchestrationExpanded ? (
-              <ChevronRight size={16} color="#3b82f6" />
-            ) : (
-              <ChevronLeft size={16} color="#3b82f6" />
-            )}
-          </TouchableOpacity>
-        </View>
+ return (
+  <View className={`flex-1 flex-row ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+    <View className="flex-1">
 
-        <View style={styles.contentRow}>
-          <AnimatePresence>
-            {isChatVisible && (
-              <MotiView 
-                from={{ width: 0, opacity: 0 }}
-                animate={{ width: isOrchestrationExpanded && isDesktop ? '60%' : '100%', opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                style={styles.chatWrapper}
-              >
-                <ChatPanel />
-              </MotiView>
-            )}
-          </AnimatePresence>
+      {/* Header */}
+      <View className={`h-14 flex-row items-center justify-end px-5 border-b ${isDark ? 'border-slate-900' : 'border-slate-200'}`}>
+        <TouchableOpacity
+          onPress={() => setIsOrchestrationExpanded(!isOrchestrationExpanded)}
+          className={`flex-row items-center px-3 py-1.5 rounded-xl border ${
+            isOrchestrationExpanded
+              ? (isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-950 border-slate-800')
+              : (isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200')
+          }`}
+        >
+          <Text className={`text-xs font-black tracking-widest mr-2 ${
+            isOrchestrationExpanded
+              ? 'text-white'
+              : (isDark ? 'text-slate-400' : 'text-slate-500')
+          }`}>
+            {isOrchestrationExpanded ? 'HIDE ENGINE' : 'SHOW ENGINE'}
+          </Text>
+          {isOrchestrationExpanded
+            ? <ChevronRight size={14} color="#fff" />
+            : <ChevronLeft size={14} color={isDark ? '#64748b' : '#94a3b8'} />
+          }
+        </TouchableOpacity>
+      </View>
 
-          {/* Orchestration Panel (Expandable) */}
-          <AnimatePresence>
-            {isOrchestrationExpanded && (
-              <MotiView
-                from={{ width: 0, opacity: 0 }}
-                animate={{ width: isDesktop ? 400 : width, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ type: 'timing', duration: 300 }}
-                style={styles.orchestrationWrapper}
-              >
-                <OrchestrationPanel />
-              </MotiView>
-            )}
-          </AnimatePresence>
-        </View>
+      {/* Content Row */}
+      <View className="flex-1 flex-row">
+        <AnimatePresence>
+          {isChatVisible && (
+            <MotiView
+              from={{ opacity: 0 }}
+              animate={{ width: isOrchestrationExpanded && isDesktop ? '60%' : '100%', opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              style={{ flex: isOrchestrationExpanded && isDesktop ? 0 : 1 }}
+            >
+              <ChatPanel />
+            </MotiView>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isOrchestrationExpanded && (
+            <MotiView
+              from={{ width: 0, opacity: 0 }}
+              animate={{ width: isDesktop ? 400 : width, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: 'timing', duration: 300 }}
+              className={`h-full border-l ${isDark ? 'border-slate-900' : 'border-slate-200'}`}
+            >
+              <OrchestrationPanel />
+            </MotiView>
+          )}
+        </AnimatePresence>
       </View>
     </View>
-  );
+  </View>
+);
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#020617',
-  },
-  sidebarWrapper: {
-    height: '100%',
-  },
-  mainContent: {
-    flex: 1,
-  },
-  header: {
-    height: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  expandButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.2)',
-  },
-  expandButtonText: {
-    color: '#3b82f6',
-    fontSize: 11,
-    fontWeight: 'bold',
-    marginRight: 8,
-    letterSpacing: 1,
-  },
-  contentRow: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  chatWrapper: {
-    flex: 1,
-  },
-  orchestrationWrapper: {
-    height: '100%',
-    overflow: 'hidden',
-  },
-});

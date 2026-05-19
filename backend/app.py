@@ -27,6 +27,7 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 import json
+import threading
 from langchain_core.messages import HumanMessage, AIMessage
 
 # Project Imports
@@ -218,12 +219,8 @@ def map_messages_to_langchain(stored_messages):
             lc_messages.append(AIMessage(content=content))
     return lc_messages
 
-@socketio.on('user_message')
-def handle_message(data):
-    message_text = data.get('text')
-    conversation_id = data.get('conversation_id')
-    user_id = data.get('user_id') or 'anonymous'
-    
+def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=None):
+    """Executes the complete multi-agent LangGraph workflow for a message turn and streams updates."""
     # Try resolving from conversation collection if anonymous
     if (not user_id or user_id == 'anonymous') and conversation_id:
         try:
@@ -239,6 +236,7 @@ def handle_message(data):
     print(f"[ORCHESTRATOR] Message: {message_text}")
     print(f"[ORCHESTRATOR] Conversation: {conversation_id}")
     print(f"[ORCHESTRATOR] User ID: {user_id}")
+    print(f"[ORCHESTRATOR] Target Socket SID: {socketio_sid}")
 
     try:
         # PREPARE Production Config for Persistence
@@ -252,7 +250,7 @@ def handle_message(data):
     
         # CRITICAL: Reset per-turn fields every message
         # next_agent="" tells supervisor this is a fresh turn (nothing completed yet)
-        # intent={} forces fresh intent classification (replace_if_new reducer clears old value)
+        # intent={} forces fresh intent classification
         turn_input = {
             "messages": [HumanMessage(content=message_text)],
             "user_id": user_id,
@@ -284,7 +282,14 @@ def handle_message(data):
 
         from core.logger import safe_text, safe_value
 
-        emit('workflow_started', {'input': safe_text(message_text)})
+        # Custom emitter that targets a specific Socket.IO session SID if provided
+        def custom_emit(event, payload):
+            if socketio_sid:
+                socketio.emit(event, payload, to=socketio_sid)
+            else:
+                socketio.emit(event, payload)
+
+        custom_emit('workflow_started', {'input': safe_text(message_text)})
         
         # Persist user message
         if conversation_id:
@@ -300,6 +305,7 @@ def handle_message(data):
         print(f"\n[ORCHESTRATOR DIAGNOSTIC] Starting graph stream execution for conversation: {conversation_id}...")
         
         has_emitted_final_reply = False
+        final_reply_text = ""
         
         for event in graph.stream(turn_input, config=config):
             # Print serialized event chunk safely
@@ -314,14 +320,14 @@ def handle_message(data):
                 
                 # Signal Agent Started
                 print(f"[SOCKET] Emitting agent_started for: {safe_text(node_name)}")
-                emit('workflow_update', {
+                custom_emit('workflow_update', {
                     'type': 'agent_started',
                     'data': {'agent': safe_text(node_name)}
                 })
                 
                 # Serialized delta to UI
                 serialized_update = serialize_value(state_update)
-                emit('workflow_update', {
+                custom_emit('workflow_update', {
                     'type': 'state_updated',
                     'data': {'agent': safe_text(node_name), 'diff': serialized_update}
                 })
@@ -331,7 +337,7 @@ def handle_message(data):
                     for trace in state_update["reasoning_traces"]:
                         trace_reasoning = safe_text(trace.get('reasoning', ''))
                         print(f"[ORCHESTRATOR DIAGNOSTIC] Node '{safe_text(node_name)}' trace: {trace_reasoning}")
-                        emit('workflow_update', {
+                        custom_emit('workflow_update', {
                             'type': 'trace_created',
                             'data': {'agent': safe_text(node_name), 'reasoning': trace_reasoning}
                         })
@@ -340,14 +346,14 @@ def handle_message(data):
                     for log in state_update["execution_logs"]:
                         log_msg = safe_text(log.get('message', ''))
                         print(f"[ORCHESTRATOR DIAGNOSTIC] Node '{safe_text(node_name)}' log: {log_msg}")
-                        emit('workflow_update', {
+                        custom_emit('workflow_update', {
                             'type': 'execution_log',
                             'data': safe_value(log)
                         })
                 
                 # Signal Agent Completed
                 print(f"[SOCKET] Emitting agent_completed for: {safe_text(node_name)}")
-                emit('workflow_update', {
+                custom_emit('workflow_update', {
                     'type': 'agent_completed',
                     'data': {'agent': safe_text(node_name)}
                 })
@@ -358,13 +364,14 @@ def handle_message(data):
                     print(f"[SOCKET] Emitting final assistant response from '{safe_text(node_name)}' delta!")
                     print(f"[SOCKET PAYLOAD] {content[:100]}...")
                     
-                    emit('chat_message', {
+                    custom_emit('chat_message', {
                         'role': 'assistant',
                         'content': content,
                         'agent': 'Frontier Agent',
                         'conversation_id': conversation_id
                     })
                     has_emitted_final_reply = True
+                    final_reply_text = content
                     print("[SOCKET] Final response emitted successfully via node delta.")
                     
                     if conversation_id:
@@ -388,13 +395,14 @@ def handle_message(data):
                 if content:
                     print(f"[SOCKET WARNING] Delta stream missed frontier_response emission! Triggering aggregated final state fallback emit.")
                     print(f"[SOCKET PAYLOAD] {content[:100]}...")
-                    emit('chat_message', {
+                    custom_emit('chat_message', {
                         'role': 'assistant',
                         'content': content,
                         'agent': 'Frontier Agent',
                         'conversation_id': conversation_id
                     })
                     has_emitted_final_reply = True
+                    final_reply_text = content
                     print("[SOCKET] Fallback response emitted successfully.")
                     if conversation_id:
                         conv_model.add_message(conversation_id, "assistant", content, agent="Frontier Agent")
@@ -405,7 +413,8 @@ def handle_message(data):
         except Exception as state_err:
             print(f"[ORCHESTRATOR DIAGNOSTIC] ERROR retrieving final state values: {state_err}")
 
-        emit('workflow_completed', {'status': 'success'})
+        custom_emit('workflow_completed', {'status': 'success'})
+        return final_reply_text
 
     except Exception as e:
         import traceback
@@ -414,15 +423,323 @@ def handle_message(data):
         print(f"!!! CRITICAL ORCHESTRATION ERROR [{error_type}]: {error_msg}")
         print(traceback.format_exc())
         
-        emit('workflow_failed', {'error': f"{error_type}: {error_msg}"})
-        emit('chat_message', {
+        custom_emit('workflow_failed', {'error': f"{error_type}: {error_msg}"})
+        custom_emit('chat_message', {
             'role': 'assistant',
             'content': f"Orchestration failure: {error_type} - {error_msg}",
             'agent': 'System',
             'conversation_id': conversation_id
         })
+        return f"Orchestration failure: {error_type} - {error_msg}"
     finally:
         print(f"[ORCHESTRATOR] === Message Turn Completed ===\n")
+
+
+@socketio.on('user_message')
+def handle_message(data):
+    """SocketIO event listener for incoming text chat turns."""
+    message_text = data.get('text')
+    conversation_id = data.get('conversation_id')
+    user_id = data.get('user_id') or 'anonymous'
+    sid = getattr(request, 'sid', None)
+    
+    # Delegate to the shared thread-safe orchestrator
+    run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=sid)
+
+
+# In-Memory Session registry for short-lived Gemini Voice Session Tokens
+GEMINI_SESSIONS = {}
+SESSION_EXPIRY_SECONDS = 300  # Tickets are valid for 5 minutes from generation
+
+@app.route("/api/gemini/token", methods=["POST"])
+def generate_gemini_token():
+    """Generates an ephemeral, single-use ticket for the frontend to authenticate a voice WebSocket session."""
+    try:
+        import uuid
+        import time
+        
+        data = request.json or {}
+        conversation_id = data.get("conversation_id")
+        user_id = data.get("user_id") or "anonymous"
+        socketio_sid = data.get("socketio_sid")
+        
+        if not conversation_id:
+            return jsonify({"success": False, "error": "conversation_id is required"}), 400
+            
+        token = str(uuid.uuid4())
+        GEMINI_SESSIONS[token] = {
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "socketio_sid": socketio_sid,
+            "created_at": time.time()
+        }
+        
+        print(f"[GEMINI TOKEN] Generated ephemeral session token: {token[:8]}... for user {user_id}")
+        return jsonify({
+            "success": True,
+            "token": token,
+            "expires_in": SESSION_EXPIRY_SECONDS
+        }), 200
+    except Exception as e:
+        print(f"[GEMINI TOKEN ERROR] {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Gemini Voice WebSocket Proxy — runs on a DEDICATED port (5001) in a
+# daemon background thread.  Werkzeug (used by Flask-SocketIO threading
+# mode) does NOT implement the HTTP→WebSocket upgrade protocol, so a raw
+# WebSocket server must live outside of Flask entirely.
+# The `websockets` package (>=13) ships `websockets.sync.server` which is
+# synchronous and thread-safe — perfect for this threading-mode backend.
+# ---------------------------------------------------------------------------
+
+def _gemini_ws_handler(client_ws):
+    """
+    Handler called by the websockets.sync.server for every new connection
+    to ws://HOST:5001/api/gemini/ws?token=<TOKEN>
+    """
+    import time
+    import base64
+    import threading
+    import urllib.parse
+    from websockets.sync.client import connect as gemini_connect
+    from websockets.exceptions import ConnectionClosed as GeminiClosed
+    from websockets.exceptions import ConnectionClosed as WSClosed
+
+    # --- Parse token from query string ---
+    raw_path = client_ws.request.path          # e.g. /api/gemini/ws?token=...
+    qs = urllib.parse.urlparse(raw_path).query
+    params = urllib.parse.parse_qs(qs)
+    token = (params.get("token") or [None])[0]
+
+    if not token or token not in GEMINI_SESSIONS:
+        print("[GEMINI PROXY WARNING] Connection rejected: Invalid or missing token.")
+        client_ws.close()
+        return
+
+    session_info = GEMINI_SESSIONS.pop(token)   # single-use — pop immediately
+
+    if time.time() - session_info["created_at"] > SESSION_EXPIRY_SECONDS:
+        print("[GEMINI PROXY WARNING] Connection rejected: Token expired.")
+        client_ws.close()
+        return
+
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not gemini_key:
+        print("[GEMINI PROXY ERROR] GEMINI_API_KEY not set in backend/.env")
+        client_ws.close()
+        return
+
+    conv_id = session_info["conversation_id"]
+    u_id    = session_info["user_id"]
+    sid     = session_info["socketio_sid"]
+
+    print(f"[GEMINI PROXY] Client WebSocket accepted for conversation {conv_id}")
+
+    # --- Connect to Google Gemini Live Bidi API ---
+    gemini_url = (
+        "wss://generativelanguage.googleapis.com/ws/"
+        "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+        f"?key={gemini_key}"
+    )
+    try:
+        print("[GEMINI PROXY] Opening connection to Gemini Live Bidi API...")
+        gemini_ws = gemini_connect(gemini_url)
+        print("[GEMINI PROXY] SUCCESS: Connected to Gemini Live API.")
+
+        setup_payload = {
+            "setup": {
+                "model": "models/gemini-2.0-flash-live-001",
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {"voiceName": "Puck"}
+                        }
+                    }
+                },
+                "systemInstruction": {
+                    "parts": [{
+                        "text": (
+                            "You are a voice interface proxy. You must NEVER answer the "
+                            "user's questions yourself or generate any independent responses. "
+                            "When the user speaks to you, simply listen and do NOT reply. "
+                            "The system will send you text content via clientContent, and "
+                            "your only job is to read that text out loud exactly as written "
+                            "in a professional, warm voice. Never speak anything else."
+                        )
+                    }]
+                }
+            }
+        }
+        gemini_ws.send(json.dumps(setup_payload))
+        print("[GEMINI PROXY] Setup instructions sent.")
+
+    except Exception as conn_err:
+        print(f"[GEMINI PROXY ERROR] Cannot connect to Gemini Live API: {conn_err}")
+        client_ws.close()
+        return
+
+    # --- Gemini → Client forwarding thread ---
+    def forward_gemini_to_client():
+        try:
+            for message in gemini_ws:
+                data = json.loads(message)
+
+                if "serverContent" in data:
+                    content = data["serverContent"]
+                    if "modelTurn" in content and "parts" in content["modelTurn"]:
+                        for part in content["modelTurn"]["parts"]:
+                            if "inlineData" in part:
+                                client_ws.send(json.dumps({
+                                    "type": "audio",
+                                    "data": part["inlineData"]["data"]
+                                }))
+                                if sid:
+                                    socketio.emit("voice_status", {"isSpeaking": True}, to=sid)
+
+                    if content.get("turnComplete"):
+                        print("[GEMINI PROXY] Gemini finished audio turn.")
+                        if sid:
+                            socketio.emit("voice_status", {"isSpeaking": False}, to=sid)
+
+                if "inputTranscription" in data:
+                    trans = data["inputTranscription"]
+                    if "parts" in trans:
+                        text_chunk = "".join(p.get("text", "") for p in trans["parts"])
+                        if text_chunk:
+                            client_ws.send(json.dumps({
+                                "type": "caption", "role": "user", "text": text_chunk
+                            }))
+
+                            if trans.get("done"):
+                                print(f"[GEMINI PROXY] Full user speech: '{text_chunk}'")
+
+                                def execute_and_synthesize(query_text):
+                                    if sid:
+                                        socketio.emit("voice_status", {"isThinking": True}, to=sid)
+
+                                    frontier_response = run_orchestration_flow(
+                                        query_text, conv_id, u_id, socketio_sid=sid
+                                    )
+
+                                    if sid:
+                                        socketio.emit("voice_status", {"isThinking": False}, to=sid)
+
+                                    client_ws.send(json.dumps({
+                                        "type": "caption", "role": "assistant",
+                                        "text": frontier_response
+                                    }))
+
+                                    speak_payload = {
+                                        "clientContent": {
+                                            "turns": [{
+                                                "role": "user",
+                                                "parts": [{"text": frontier_response}]
+                                            }],
+                                            "turnComplete": True
+                                        }
+                                    }
+                                    gemini_ws.send(json.dumps(speak_payload))
+                                    print(f"[GEMINI PROXY] Injected TTS text: {frontier_response[:80]}...")
+
+                                threading.Thread(
+                                    target=execute_and_synthesize,
+                                    args=(text_chunk,),
+                                    daemon=True
+                                ).start()
+
+        except (GeminiClosed, WSClosed):
+            print("[GEMINI PROXY] Gemini WS closed (forward thread).")
+        except Exception as fwd_err:
+            print(f"[GEMINI PROXY ERROR] Forward thread: {fwd_err}")
+        finally:
+            try:
+                client_ws.close()
+            except Exception:
+                pass
+
+    threading.Thread(target=forward_gemini_to_client, daemon=True).start()
+
+    # --- Client → Gemini forwarding loop (main handler thread) ---
+    try:
+        for client_msg in client_ws:
+            if isinstance(client_msg, bytes):
+                audio_b64 = base64.b64encode(client_msg).decode("utf-8")
+                gemini_ws.send(json.dumps({
+                    "realtimeInput": {
+                        "mediaChunks": [{
+                            "mimeType": "audio/pcm;rate=16000",
+                            "data": audio_b64
+                        }]
+                    }
+                }))
+            else:
+                try:
+                    cmd = json.loads(client_msg)
+                    if cmd.get("type") == "interrupt":
+                        print("[GEMINI PROXY] Barge-in interrupt received.")
+                        gemini_ws.send(json.dumps({
+                            "clientContent": {"turns": [], "turnComplete": True}
+                        }))
+                except Exception as cmd_err:
+                    print(f"[GEMINI PROXY ERROR] Client cmd parse error: {cmd_err}")
+    except (WSClosed, GeminiClosed):
+        pass
+    except Exception as proxy_err:
+        print(f"[GEMINI PROXY ERROR] Client→Gemini loop: {proxy_err}")
+    finally:
+        print("[GEMINI PROXY] Session closed.")
+        try:
+            gemini_ws.close()
+        except Exception:
+            pass
+
+
+def _start_gemini_ws_server():
+    """Starts the standalone WebSocket server for the Gemini voice proxy on port 5001.
+    Uses SO_REUSEADDR so the port is reclaimed immediately when the old process dies
+    (important on Windows where TIME_WAIT can hold the socket for a few seconds).
+    Retries up to 10 times with a 2-second back-off to survive brief port conflicts.
+    """
+    import socket
+    import time
+    from websockets.sync.server import serve as ws_serve
+
+    host = "0.0.0.0"
+    port = 5001
+
+    def make_socket():
+        """Create a TCP socket with SO_REUSEADDR so we can rebind immediately."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        return sock
+
+    print(f"[GEMINI WS SERVER] Starting dedicated WebSocket server on ws://{host}:{port}")
+
+    for attempt in range(1, 11):
+        try:
+            with ws_serve(_gemini_ws_handler, sock=make_socket()) as server:
+                print(f"[GEMINI WS SERVER] Listening on port {port} (attempt {attempt})")
+                server.serve_forever()
+            break  # clean exit — stop retrying
+        except OSError as os_err:
+            # Port still occupied by the previous process — wait and retry
+            print(f"[GEMINI WS SERVER] Port {port} busy (attempt {attempt}/10): {os_err}")
+            if attempt < 10:
+                time.sleep(2)
+            else:
+                print(f"[GEMINI WS SERVER ERROR] Could not bind to port {port} after 10 attempts. Voice proxy disabled.")
+        except Exception as ws_srv_err:
+            print(f"[GEMINI WS SERVER ERROR] Unexpected error: {ws_srv_err}")
+            break
+
+
+# Launch WebSocket server in a daemon thread so it starts alongside Flask
+_gemini_ws_thread = threading.Thread(target=_start_gemini_ws_server, daemon=True)
+_gemini_ws_thread.start()
 
 # Diagnostic Routes
 @app.route("/health", methods=["GET"])

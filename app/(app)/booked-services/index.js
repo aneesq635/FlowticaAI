@@ -134,18 +134,17 @@ export default function BookedServices() {
   };
 
   return (
-    <SafeAreaView edges={['top']} className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
-      <View className={`px-6 py-4 flex-row items-center border-b ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
-        <TouchableOpacity onPress={() => router.back()} className="mr-4">
-          <ArrowLeft size={24} color={isDark ? '#e2e8f0' : '#1e293b'} />
-        </TouchableOpacity>
-        <Typography variant="h3">Booked Services</Typography>
-      </View>
+    <SafeAreaView edges={['bottom']} className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
 
-      <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView className="flex-1 p-6" contentContainerStyle={{ paddingBottom: 100 }}>
+        <View className="mb-6">
+          <Typography variant="h1" className="tracking-tighter text-2xl font-black">Booked Services</Typography>
+          <Typography variant="body" className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Track and manage your requested services</Typography>
+        </View>
+
         {loading ? (
           <View className="py-10 justify-center items-center">
-            <ActivityIndicator size="large" color="#3b82f6" />
+            <ActivityIndicator size="large" color={isDark ? '#ffffff' : '#0f172a'} />
           </View>
         ) : bookings.length === 0 ? (
           <View className="items-center justify-center mt-20">
@@ -180,7 +179,7 @@ export default function BookedServices() {
                 {/* Details */}
                 <View className="border-t border-b py-3 my-2 border-slate-100 dark:border-slate-800">
                   <View className="flex-row items-center mb-3">
-                    <Clock size={16} color={isDark ? '#94a3b8' : '#64748b'} className="mr-2" />
+                   <Clock size={16} color={isDark ? '#94a3b8' : '#64748b'} style={{ marginRight: 8 }} />
                     <Typography variant="small" className="opacity-80 font-semibold">
                       Scheduled: {booking.date || booking.requested_date} at {booking.time || booking.requested_time}
                     </Typography>
@@ -207,24 +206,27 @@ export default function BookedServices() {
                     </View>
                   </View>
 
-                  <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
-                    {booking.provider_phone && booking.provider_phone !== 'Not provided' && (
-                      <View className="flex-row items-center" style={{ marginBottom: (booking.provider_location && booking.provider_location !== 'Not provided') ? 6 : 0 }}>
-                        <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} className="mr-2" />
-                        <Typography variant="small" className="opacity-80 text-xs font-semibold">
-                          {booking.provider_phone}
-                        </Typography>
-                      </View>
-                    )}
-                    {booking.provider_location && booking.provider_location !== 'Not provided' && (
-                      <View className="flex-row items-center">
-                        <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} className="mr-2" />
-                        <Typography variant="small" className="opacity-80 text-xs font-semibold">
-                          {booking.provider_location}
-                        </Typography>
-                      </View>
-                    )}
-                  </View>
+                  {(booking.provider_phone && booking.provider_phone !== 'Not provided') ||
+ (booking.provider_location && booking.provider_location !== 'Not provided') ? (
+  <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
+    {booking.provider_phone && booking.provider_phone !== 'Not provided' && (
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: (booking.provider_location && booking.provider_location !== 'Not provided') ? 6 : 0 }}>
+        <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} />
+        <Typography variant="small" className="opacity-80 text-xs font-semibold ml-2">
+          {booking.provider_phone}
+        </Typography>
+      </View>
+    )}
+    {booking.provider_location && booking.provider_location !== 'Not provided' && (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} />
+        <Typography variant="small" className="opacity-80 text-xs font-semibold ml-2">
+          {booking.provider_location}
+        </Typography>
+      </View>
+    )}
+  </View>
+) : null}
                 </View>
 
                 {upcoming && (
@@ -233,7 +235,7 @@ export default function BookedServices() {
                       onPress={() => handleCancelBooking(booking)}
                       className="px-4 py-2.5 rounded-2xl bg-red-500/10 flex-row items-center"
                     >
-                      <Trash size={16} color="#ef4444" className="mr-1.5" />
+                     <Trash size={16} color="#ef4444" style={{ marginRight: 6 }} />
                       <Text className="text-red-500 font-bold">Cancel Service</Text>
                     </TouchableOpacity>
 
@@ -242,7 +244,7 @@ export default function BookedServices() {
                       onPress={() => setRatingModal({ open: true, bookingId: booking._id })}
                       className={`px-6 py-2.5 rounded-2xl flex-row items-center ${canComplete ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-800'}`}
                     >
-                      <CheckCircle size={16} color={canComplete ? '#ffffff' : '#64748b'} className="mr-1.5" />
+                      <CheckCircle size={16} color={canComplete ? '#ffffff' : '#64748b'} style={{ marginRight: 6 }} />
                       <Text className={`font-bold ${canComplete ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>
                         {canComplete ? 'Mark Completed' : 'Locked'}
                       </Text>
@@ -291,12 +293,12 @@ export default function BookedServices() {
             <TouchableOpacity 
               disabled={actionLoading}
               onPress={handleComplete}
-              className="w-[45%] py-4 rounded-2xl bg-blue-500 items-center justify-center"
+              className={`w-[45%] py-4 rounded-2xl ${isDark ? 'bg-white' : 'bg-slate-900'} items-center justify-center`}
             >
               {actionLoading ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={isDark ? '#0f172a' : '#ffffff'} />
               ) : (
-                <Text className="text-white font-bold">Submit</Text>
+                <Text className={`${isDark ? 'text-slate-950' : 'text-white'} font-bold`}>Submit</Text>
               )}
             </TouchableOpacity>
           </View>

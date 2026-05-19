@@ -8,7 +8,8 @@ import {
   Alert 
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { setUnreadCount } from '../../../store/orchestrationSlice';
 import { useAuth } from '../../../components/AuthContext';
 import { 
   Bell, 
@@ -32,6 +33,7 @@ export default function NotificationsPage() {
   
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const dispatch = useDispatch();
 
   const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
 
@@ -42,6 +44,8 @@ export default function NotificationsPage() {
       const data = await res.json();
       if (data.success) {
         setNotifications(data.notifications || []);
+        const unread = (data.notifications || []).filter(n => n.status === 'unread').length;
+        dispatch(setUnreadCount(unread));
         // Auto mark as read on load
         if (data.notifications?.some(n => n.status === 'unread')) {
           markAllAsRead();
@@ -52,16 +56,20 @@ export default function NotificationsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, backendUrl]);
+  }, [user, backendUrl, dispatch]);
 
   const markAllAsRead = async () => {
     if (!user?.id) return;
     try {
-      await fetch(`${backendUrl}/api/notifications/mark-read`, {
+      const res = await fetch(`${backendUrl}/api/notifications/mark-read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_supabase_id: user.id })
       });
+      const data = await res.json();
+      if (data.success) {
+        dispatch(setUnreadCount(0));
+      }
     } catch (e) {
       console.warn(e);
     }
@@ -70,14 +78,13 @@ export default function NotificationsPage() {
   const clearAll = async () => {
     if (!user?.id) return;
     try {
-      const res = await fetch(`${backendUrl}/api/notifications/clear`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_supabase_id: user.id })
+      const res = await fetch(`${backendUrl}/api/notifications/clear/${user.id}`, {
+        method: 'DELETE'
       });
       const data = await res.json();
       if (data.success) {
         setNotifications([]);
+        dispatch(setUnreadCount(0));
       }
     } catch (e) {
       console.warn(e);
@@ -91,7 +98,12 @@ export default function NotificationsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setNotifications(prev => prev.filter(n => n._id !== id));
+        setNotifications(prev => {
+          const updated = prev.filter(n => n._id !== id);
+          const unread = updated.filter(n => n.status === 'unread').length;
+          dispatch(setUnreadCount(unread));
+          return updated;
+        });
       }
     } catch (e) {
       console.warn(e);
@@ -147,7 +159,7 @@ export default function NotificationsPage() {
   if (isLoading) {
     return (
       <View className={`flex-1 justify-center items-center ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={isDark ? '#ffffff' : '#0f172a'} />
       </View>
     );
   }
@@ -215,7 +227,7 @@ export default function NotificationsPage() {
                     key={notif._id} 
                     className={`mb-4 p-5 rounded-3xl border-0 shadow-sm relative overflow-hidden ${
                       isUnread 
-                        ? (isDark ? 'bg-slate-900 border-l-4 border-blue-500' : 'bg-white border-l-4 border-blue-500') 
+                        ? (isDark ? 'bg-slate-900 border-l-4 border-slate-400' : 'bg-white border-l-4 border-slate-800') 
                         : (isDark ? 'bg-slate-900/60' : 'bg-white/80')
                     }`}
                   >
@@ -243,10 +255,10 @@ export default function NotificationsPage() {
                     </View>
 
                     {isCounter && (
-                      <View className="flex-row space-x-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? '#1e293b' : '#f1f5f9' }}>
                         <TouchableOpacity 
                           onPress={() => handleCounterDecision(notif.related_id, 'approved')}
-                          className="flex-1 bg-green-600 py-3 rounded-2xl items-center justify-center shadow-sm"
+                          className="flex-1 bg-green-500 py-3 rounded-2xl items-center justify-center shadow-sm"
                         >
                           <Text className="text-white font-black text-xs">Accept Offer</Text>
                         </TouchableOpacity>
@@ -255,7 +267,7 @@ export default function NotificationsPage() {
                           onPress={() => handleCounterDecision(notif.related_id, 'denied')}
                           className="flex-1 bg-slate-200 dark:bg-slate-800 py-3 rounded-2xl items-center justify-center"
                         >
-                          <Text className={`font-black text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <Text className={`font-black text-xs ${isDark ? 'text-slate-350' : 'text-slate-700'}`}>
                             Decline
                           </Text>
                         </TouchableOpacity>

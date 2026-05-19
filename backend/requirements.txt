@@ -63,6 +63,7 @@ httpcore==1.0.9
 anyio==4.13.0
 requests==2.34.2
 aiohttp==3.13.5
+websockets==16.0
 
 # --- Serialization & Utilities ---
 orjson==3.11.9

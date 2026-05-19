@@ -38,6 +38,7 @@ const initialState = {
     availability: true,
   },
   theme: 'dark', // 'light' | 'dark'
+  unreadNotificationsCount: 0,
 };
 
 const orchestrationSlice = createSlice({
@@ -109,6 +110,9 @@ const orchestrationSlice = createSlice({
     },
     setTheme: (state, action) => {
       state.theme = action.payload;
+    },
+    setUnreadCount: (state, action) => {
+      state.unreadNotificationsCount = action.payload;
     }
   },
 });
@@ -131,7 +135,8 @@ export const {
   setBooking,
   setProviderProfile,
   toggleTheme,
-  setTheme
+  setTheme,
+  setUnreadCount
 } = orchestrationSlice.actions;
 
 export default orchestrationSlice.reducer;

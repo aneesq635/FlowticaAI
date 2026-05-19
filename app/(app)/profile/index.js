@@ -89,32 +89,20 @@ export default function ProfileScreen() {
     <View
       style={{
         flex: 1,
-        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
         backgroundColor: isDark ? '#020617' : '#f8fafc'
       }}
     >
-      {/* Header */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingVertical: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: isDark ? '#1e293b' : '#e2e8f0',
-          backgroundColor: isDark ? '#0f172a' : '#ffffff'
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 16 }}>
-          <ArrowLeft size={24} color={isDark ? '#e2e8f0' : '#1e293b'} />
-        </TouchableOpacity>
-        <Typography variant="h3">My Profile</Typography>
-      </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
+        <View style={{ marginBottom: 24 }}>
+          <Typography variant="h1" className="tracking-tighter text-2xl font-black">My Profile</Typography>
+          <Typography variant="body" className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Customize your personal credentials and preferences</Typography>
+        </View>
+
         {loading ? (
           <View style={{ paddingVertical: 80, justifyContent: 'center', alignItems: 'center' }}>
-            <ActivityIndicator size="large" color="#3b82f6" />
+            <ActivityIndicator size="large" color={isDark ? '#ffffff' : '#0f172a'} />
           </View>
         ) : (
           <View
@@ -134,10 +122,10 @@ export default function ProfileScreen() {
                   justifyContent: 'center', alignItems: 'center',
                   backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
                   marginBottom: 16,
-                  borderWidth: 1, borderColor: 'rgba(59,130,246,0.2)'
+                  borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0'
                 }}
               >
-                <User size={48} color="#3b82f6" />
+                <User size={48} color={isDark ? '#ffffff' : '#0f172a'} />
               </View>
               <Typography variant="h2" className="text-center">{profile.name || "Your Name"}</Typography>
               <Typography variant="small" className="opacity-60 capitalize">
@@ -240,14 +228,13 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            {/* Save Button */}
             <TouchableOpacity
               disabled={saving}
               onPress={handleSave}
               style={{
                 paddingVertical: 16,
                 borderRadius: 16,
-                backgroundColor: '#3b82f6',
+                backgroundColor: isDark ? '#ffffff' : '#0f172a',
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -255,11 +242,11 @@ export default function ProfileScreen() {
               }}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={isDark ? '#0f172a' : '#ffffff'} />
               ) : (
                 <>
-                  <Save size={18} color="#ffffff" />
-                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 16 }}>
+                  <Save size={18} color={isDark ? '#0f172a' : '#ffffff'} />
+                  <Text style={{ color: isDark ? '#0f172a' : '#ffffff', fontWeight: 'bold', fontSize: 16 }}>
                     Save Changes
                   </Text>
                 </>
