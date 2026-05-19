@@ -1700,6 +1700,17 @@ def provider_complete_booking(booking_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/bookings/<booking_id>", methods=["DELETE"])
+def delete_booking(booking_id):
+    try:
+        from bson import ObjectId
+        result = db.bookings.delete_one({"_id": ObjectId(booking_id)})
+        if result.deleted_count == 0:
+            return jsonify({"error": "Booking not found"}), 404
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/bookings/<booking_id>/cancel", methods=["POST"])
 def cancel_booking(booking_id):
     try:

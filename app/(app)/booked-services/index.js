@@ -108,6 +108,40 @@ export default function BookedServices() {
     );
   };
 
+  const handleDeleteBooking = (bookingId) => {
+    Alert.alert(
+      "Delete Booking",
+      "Are you sure you want to delete this booking from your history?",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const response = await fetch(`${backendUrl}/api/bookings/${bookingId}`, {
+                method: "DELETE",
+              });
+              const resJson = await response.json();
+              if (resJson.success) {
+                Alert.alert("Deleted", "Booking has been removed.");
+                fetchBookings();
+              } else {
+                Alert.alert("Error", resJson.error || "Failed to delete booking.");
+              }
+            } catch (err) {
+              console.error(err);
+              Alert.alert("Error", "Something went wrong.");
+            } finally {
+              setActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const isPast = (dateStr, timeStr) => {
     try {
       const now = new Date();
@@ -169,10 +203,18 @@ export default function BookedServices() {
                       Price: {booking.price} PKR
                     </Typography>
                   </View>
-                  <View className={`px-3 py-1 rounded-full ${completed ? 'bg-green-500/20' : cancelled ? 'bg-red-500/20' : 'bg-blue-500/20'}`}>
-                    <Text className={`font-bold ${completed ? 'text-green-500' : cancelled ? 'text-red-500' : 'text-blue-500'}`}>
-                      {completed ? 'Completed' : cancelled ? 'Cancelled' : 'Confirmed'}
-                    </Text>
+                  <View className="flex-row items-center gap-2">
+                    <View className={`px-3 py-1 rounded-full ${completed ? 'bg-green-500/20' : cancelled ? 'bg-red-500/20' : 'bg-blue-500/20'}`}>
+                      <Text className={`font-bold ${completed ? 'text-green-500' : cancelled ? 'text-red-500' : 'text-blue-500'}`}>
+                        {completed ? 'Completed' : cancelled ? 'Cancelled' : 'Confirmed'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={() => handleDeleteBooking(booking._id)} 
+                      className={`w-8 h-8 rounded-full items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
+                    >
+                      <Trash size={14} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
                 </View>
 

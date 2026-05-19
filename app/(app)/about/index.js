@@ -25,6 +25,7 @@ import { useSelector } from 'react-redux';
 import { MotiView } from 'moti';
 import { Typography } from '../../../components/ui/Typography';
 import { Card } from '../../../components/ui/Card';
+import { useAuth } from '../../../components/AuthContext';
 
 const TechCard = ({ title, subtitle, icon: Icon, description, delay = 0 }) => {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
@@ -64,7 +65,8 @@ const SectionHeader = ({ title, subtitle }) => {
 export default function AboutScreen() {
   const router = useRouter();
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
-
+ 
+   
   return (
     <SafeAreaView 
       className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
@@ -197,13 +199,7 @@ export default function AboutScreen() {
             <Typography className={`text-center text-xs font-semibold mb-8 max-w-[240] ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>
               Connect to the live orchestration gateway and request your custom agent workflows now.
             </Typography>
-            <TouchableOpacity 
-              onPress={() => router.push('/conversations')}
-              className={`px-8 py-4 rounded-2xl flex-row items-center ${isDark ? 'bg-slate-950' : 'bg-white'}`}
-            >
-              <Typography variant="h4" className={`mr-2 font-black ${isDark ? 'text-white' : 'text-slate-950'}`}>Go to Console</Typography>
-              <ChevronRight size={18} color={isDark ? '#ffffff' : '#0f172a'} />
-            </TouchableOpacity>
+            
           </MotiView>
         </View>
       </ScrollView>

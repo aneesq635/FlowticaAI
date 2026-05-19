@@ -9,6 +9,7 @@ import { Typography } from '../../../components/ui/Typography';
 import { Card } from '../../../components/ui/Card';
 import LiveVoiceAssistant from '../../../components/orchestration/LiveVoiceAssistant';
 import { startVoiceSession } from '../../../store/liveAgentSlice';
+import {  Keyboard } from 'react-native';
 
 const ChatMessage = ({ message }) => {
   const isUser = message.role === 'user';
@@ -115,6 +116,16 @@ const ChatPanel = () => {
   }, [conversations, activeConversationId]);
   
   const dispatch = useDispatch();
+  const [keyboardHeight, setKeyboardHeight] = React.useState(0);
+  React.useEffect(() => {
+  const show = Keyboard.addListener('keyboardDidShow', e => {
+    setKeyboardHeight(e.endCoordinates.height);
+  });
+  const hide = Keyboard.addListener('keyboardDidHide', () => {
+    setKeyboardHeight(0);
+  });
+  return () => { show.remove(); hide.remove(); };
+}, []);
 
   useEffect(() => {
     if (scrollViewRef.current) {
@@ -165,7 +176,7 @@ const ChatPanel = () => {
       <ScrollView
        ref={scrollViewRef}
   className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
-  contentContainerStyle={{ padding: 24, paddingBottom: 140 }}
+ contentContainerStyle={{ padding: 24, paddingBottom: 160 }}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="handled"
       >
@@ -193,8 +204,13 @@ const ChatPanel = () => {
       </ScrollView>
 
       {/* Input Area */}
-      <View className={`px-4 border-t ${isDark ? 'bg-slate-950 border-slate-900' : 'bg-white border-slate-100'}`}
-  style={{ paddingBottom: Platform.OS === 'android' ? 16 : 28, paddingTop: 12 }}>
+      <View 
+  className={`px-4 border-t ${isDark ? 'bg-slate-950 border-slate-900' : 'bg-white border-slate-100'}`}
+  style={{ 
+    paddingBottom: Platform.OS === 'android' ? 16 : 28, 
+  paddingTop: 12,
+  }}
+>
         <View className={`flex-row items-end p-2 rounded-[32px] border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
           <TouchableOpacity className="p-3 mb-1">
             <Paperclip size={20} color={isDark ? '#64748b' : '#94a3b8'} />

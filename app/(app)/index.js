@@ -23,6 +23,7 @@ import { useAuth } from '../../components/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Typography } from '../../components/ui/Typography';
+import { useDbUser } from '../../components/UserContext';
 
 const FeatureCard = ({ icon: Icon, title, description, delay = 0 }) => {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
@@ -49,22 +50,11 @@ export default function LandingPage() {
   const { user } = useAuth();
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
+
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
-   const [dbUser, setDbUser] = React.useState(null);
-    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
-   const fetchUser = async () => {
-    try {
-      if (!user?.id) return;
-      const response = await fetch(`${backendUrl}/user/${user.id}`);
-      const data = await response.json();
-      if (data?.user) setDbUser(data.user);
-    } catch (err) {
-      console.log(err);
-    }
-  };
-    React.useEffect(() => {
-    fetchUser();
-  }, [user?.id]);
+  const { userLoading, dbUser } = useDbUser();
+  console.log("DBUSER: ", dbUser);
+
   return (
     <ScrollView
       className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
@@ -114,30 +104,30 @@ export default function LandingPage() {
 
           {/* ✅ Button logic: customer → Find Services, provider → Provider Hub, guest → Get Started */}
           <View className={`flex-row space-x-4 ${isDesktop ? '' : 'flex-col space-x-0 space-y-4'}`}>
-            {dbUser ? (
-              dbUser?.user_type === 'customer' ? (
-                <Button
-                  title="Find Services"
-                  size="lg"
-                  icon={Search}
-                  onPress={() => router.push('/conversations')}
-                />
-              ) : (
-                <Button
-                  title="Provider Hub"
-                  variant="secondary"
-                  size="lg"
-                  icon={Briefcase}
-                  onPress={() => router.push('/provider')}
-                />
-              )
-            ) : (
+            {!user ? (
               <Button
                 title="Get Started Now"
                 size="lg"
                 icon={ArrowRight}
                 iconPosition="right"
                 onPress={() => router.push('/auth')}
+              />
+            ) : userLoading ? (
+              <View className="h-12 w-40 rounded-full bg-slate-300 opacity-50" />
+            ) : dbUser?.user_type === 'customer' ? (
+              <Button
+                title="Find Services"
+                size="lg"
+                icon={Search}
+                onPress={() => router.push('/conversations')}
+              />
+            ) : (
+              <Button
+                title="Provider Hub"
+                variant="secondary"
+                size="lg"
+                icon={Briefcase}
+                onPress={() => router.push('/provider')}
               />
             )}
           </View>

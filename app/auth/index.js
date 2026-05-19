@@ -6,10 +6,10 @@ import * as Linking from 'expo-linking';
 import supabase from "../../components/Supabase.js";
 import * as WebBrowser from "expo-web-browser";
 import { useSelector } from "react-redux";
-import { Typography } from "../../components/ui/Typography";
-import { Button } from "../../components/ui/Button";
-import { Input } from "../../components/ui/Input";
-import { Card } from "../../components/ui/Card";
+import { Typography } from "../../components/ui/Typography.js";
+import { Button } from "../../components/ui/Button.js";
+import { Input } from "../../components/ui/Input.js";
+import { Card } from "../../components/ui/Card.js";
 
 WebBrowser.maybeCompleteAuthSession();
 

@@ -941,22 +941,6 @@ export default function ProviderDashboard() {
           ))}
         </View>
       )}
-
-      {/* Insights */}
-      <View className="flex-row items-center space-x-2 mb-4">
-        <TrendingUp size={18} color={isDark ? '#f1f5f9' : '#000'} />
-        <Text className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Insights</Text>
-      </View>
-      <View className="flex-row justify-between mb-12">
-        <Card className={`p-5 rounded-3xl flex-1 mr-2 border-0 shadow-sm ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-          <Text className={`text-xs font-bold uppercase tracking-widest mb-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Total Earned</Text>
-          <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>PKR 0</Text>
-        </Card>
-        <Card className={`p-5 rounded-3xl flex-1 ml-2 border-0 shadow-sm ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-          <Text className={`text-xs font-bold uppercase tracking-widest mb-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Conversion</Text>
-          <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>100%</Text>
-        </Card>
-      </View>
     </ScrollView>
 
     {/* ─── Create / Edit Service Modal ────────────────────────────────────── */}
