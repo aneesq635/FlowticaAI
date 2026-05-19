@@ -1,5 +1,6 @@
 import sys
 import io
+import threading
 
 # Global UTF-8 encoding configuration for Windows terminal compatibility
 if sys.platform.startswith('win'):
@@ -50,6 +51,23 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', allow
 # Initialize Logger with SocketIO
 logger.socketio = socketio
 
+# ── PATCH 1 ───────────────────────────────────────────────────────────────────
+# Add this near the top of app.py, after the imports section.
+# This dict maps conversation_id → threading.Lock() and prevents two socket
+# messages for the same conversation from running the graph simultaneously.
+ 
+_conversation_locks: dict = {}
+_conversation_locks_mutex = threading.Lock()
+ 
+ 
+def _get_conversation_lock(conversation_id: str) -> threading.Lock:
+    """Returns (creating if needed) a per-conversation reentrant lock."""
+    with _conversation_locks_mutex:
+        if conversation_id not in _conversation_locks:
+            _conversation_locks[conversation_id] = threading.Lock()
+        return _conversation_locks[conversation_id]
+ 
+
 print("\n==================================================")
 print("[STARTUP DIAGNOSTIC] Core Services Boot Sequence")
 print("==================================================")
@@ -84,6 +102,8 @@ try:
 except Exception as e:
     print(f"[STARTUP DIAGNOSTIC] WARNING: Model Initialization error: {str(e)}")
 
+
+
 try:
     print("[STARTUP DIAGNOSTIC] Compiling LangGraph Multi-Agent Workflow...")
     graph = workflow.compile(checkpointer=checkpointer)
@@ -92,6 +112,60 @@ except Exception as e:
     print(f"[STARTUP DIAGNOSTIC] ERROR: LangGraph Compilation failed: {str(e)}")
     import traceback
     print(traceback.format_exc())
+
+try:
+    print("[CHROMA SYNC] Starting intelligent startup sync validation...")
+    from core.vector_store import vector_manager
+ 
+    vs = vector_manager.get_vector_store()
+ 
+    # Count records in both stores
+    mongo_count = db.service_providers.count_documents({})
+    
+    try:
+        chroma_count = vs._collection.count()
+    except Exception:
+        chroma_count = 0
+ 
+    print(f"[CHROMA SYNC] MongoDB records: {mongo_count} | ChromaDB records: {chroma_count}")
+ 
+    if mongo_count == 0:
+        print("[CHROMA SYNC] No services in MongoDB. Skipping sync.")
+    elif chroma_count == 0:
+        # ChromaDB is empty — full sync needed
+        print("[CHROMA SYNC] ChromaDB is empty. Running full sync...")
+        vector_manager.sync_from_mongodb(db)
+    elif chroma_count < mongo_count:
+        # Some records missing — find and sync only missing ones
+        print(f"[CHROMA SYNC] {mongo_count - chroma_count} records missing. Syncing missing services...")
+        
+        # Get all IDs currently in ChromaDB
+        try:
+            chroma_ids = set(vs._collection.get()["ids"])
+        except Exception:
+            chroma_ids = set()
+ 
+        # Find MongoDB records not in ChromaDB
+        all_services = db.service_providers.find({}, {"_id": 1})
+        missing_count = 0
+        for svc in all_services:
+            svc_id = str(svc["_id"])
+            if svc_id not in chroma_ids:
+                try:
+                    vector_manager.upsert_service(db, svc_id)
+                    missing_count += 1
+                except Exception as e:
+                    print(f"[CHROMA SYNC WARNING] Failed to sync {svc_id}: {e}")
+ 
+        print(f"[CHROMA SYNC] Synced {missing_count} missing services.")
+    else:
+        print("[CHROMA SYNC] ChromaDB is up to date. No sync needed.")
+ 
+    print("[CHROMA SYNC] Startup sync validation complete.")
+except Exception as sync_err:
+    print(f"[CHROMA SYNC WARNING] Startup sync failed (non-critical): {sync_err}")
+
+
 
 print("==================================================\n")
 
@@ -219,6 +293,8 @@ def map_messages_to_langchain(stored_messages):
             lc_messages.append(AIMessage(content=content))
     return lc_messages
 
+
+ 
 def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=None):
     """Executes the complete multi-agent LangGraph workflow for a message turn and streams updates."""
     # Try resolving from conversation collection if anonymous
@@ -237,6 +313,8 @@ def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=
     print(f"[ORCHESTRATOR] Conversation: {conversation_id}")
     print(f"[ORCHESTRATOR] User ID: {user_id}")
     print(f"[ORCHESTRATOR] Target Socket SID: {socketio_sid}")
+
+
 
     try:
         # PREPARE Production Config for Persistence
@@ -260,6 +338,7 @@ def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=
             "next_agent": "",       # Empty = fresh turn, supervisor uses this to track progress
             "iteration_count": 0,  # Reset loop guard counter
             "turn_routed_agents": [],  # Reset loop safety guard routed list
+            "booking_outcome": {},  
             "metadata": {"conversation_id": conversation_id, "is_resumed": is_resumed}
         }
 
@@ -437,14 +516,29 @@ def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=
 
 @socketio.on('user_message')
 def handle_message(data):
-    """SocketIO event listener for incoming text chat turns."""
+    """SocketIO event listener — serialises concurrent messages per conversation."""
     message_text = data.get('text')
     conversation_id = data.get('conversation_id')
     user_id = data.get('user_id') or 'anonymous'
     sid = getattr(request, 'sid', None)
-    
-    # Delegate to the shared thread-safe orchestrator
-    run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=sid)
+ 
+    lock = _get_conversation_lock(conversation_id or 'default')
+ 
+    if not lock.acquire(blocking=False):
+        # Another message is already being processed for this conversation.
+        # Emit a transient busy signal and drop the duplicate.
+        print(f"[SOCKET] Conversation {conversation_id} is busy — dropping duplicate message.")
+        if sid:
+            socketio.emit('workflow_update', {
+                'type': 'busy',
+                'data': {'message': 'Processing your previous message, please wait…'}
+            }, to=sid)
+        return
+ 
+    try:
+        run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=sid)
+    finally:
+        lock.release()
 
 
 # In-Memory Session registry for short-lived Gemini Voice Session Tokens

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { View, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { MotiView, AnimatePresence } from 'moti';
 import { Send, Paperclip, Bot, User, Activity, ChevronDown, ChevronUp, Sparkles, Mic } from 'lucide-react-native';

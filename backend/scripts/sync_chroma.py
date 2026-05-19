@@ -1,4 +1,7 @@
 import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from pymongo import MongoClient
 from core.vector_store import vector_manager
 from dotenv import load_dotenv
