@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/Flowtica-AI%20Service%20Orchestrator-6C63FF?style=for-the-badge&logoColor=white" alt="Flowtica" height="40"/>
 
-# Flowtica 
+# Flowtica 🤖
 
 ### *AI-Orchestrated Service Marketplace for the Informal Economy*
 
@@ -17,13 +17,17 @@
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongodb.com)
 [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 <br/>
 
+[**View Demo**](#-demo) · [**Report Bug**](issues) · [**Request Feature**](issues)
+
+</div>
 
 ---
 
-##  Table of Contents
+## 📖 Table of Contents
 
 - [About The Project](#-about-the-project)
 - [The Problem We Solve](#-the-problem-we-solve)
@@ -41,14 +45,16 @@
 - [Demo](#-demo)
 - [Assumptions & Limitations](#-assumptions--limitations)
 - [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
-##  About The Project
+## 🌟 About The Project
 
-**Flowtica** is an agentic AI system built for the informal service economy connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
+**Flowtica** is an agentic AI system built for the informal service economy — connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
 
-A user can simply type (or speak):
+A user can simply type:
 
 > *"Mujhe kal subah G-13 mein AC technician chahiye"*
 
@@ -58,7 +64,7 @@ Built as a submission for **Google Antigravity Challenge 2**, this project demon
 
 ---
 
-## The Problem We Solve
+## 🚨 The Problem We Solve
 
 The informal economy operates largely through WhatsApp messages, phone calls, and word-of-mouth referrals. This leads to:
 
@@ -74,25 +80,24 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-##  Key Features
+## ✨ Key Features
 
-###  AI-Driven Orchestration
+### 🧠 AI-Driven Orchestration
 - **Supervisor Agent** routes every request to the right specialised agent
 - **Intent Extraction** parses service type, location, date, and price from natural language — in **Urdu, Roman Urdu, and English**
 - **Negotiation Agent** handles counter-offers and real-time price discussions between buyers and sellers
 
-### Location Intelligence
+### 📍 Location Intelligence
 - Interactive `LocationPickerModal` with autocomplete and draggable map pins
 - **MiniMap** integration on booking cards and provider profiles
 - **Reverse geocoding** to auto-resolve coordinates into human-readable addresses
 
-###  Real-time Everything
-- Socket.IO-powered live chat between buyers and sellers with the help of agent.
-  Agent is like middleman.
+### ⚡ Real-time Everything
+- Socket.IO-powered live chat between buyers and sellers — the AI agent acts as an intelligent middle man
 - Instant push notifications for new requests, approvals, and status changes
 - Concurrent request safety via per-conversation threading locks
 
-###  Full Service Lifecycle
+### 🔄 Full Service Lifecycle
 - Role switching: one account can act as both **Buyer** and **Seller**
 - Booking snapshots that capture provider + customer location at booking time
 - Automated follow-up reminders and status confirmations
@@ -103,7 +108,7 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-## System Architecture
+## 🏗 System Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -121,12 +126,14 @@ Flowtica addresses all of these through a single conversational interface backed
 │                                                        │
 │  ┌─────────────┐    routes to    ┌──────────────────┐  │
 │  │  Supervisor │ ──────────────► │  Intent Agent    │  │
-│  │    Agent    │ ◄────────────── │  Search Agent    │  │
-│  │  (Entry &   │   returns to    │  Booking Agent   │  │
-│  │   Router)   │                 │  Negotiation Agt │  │
-│  └─────────────┘                 │  Followup Agent  │  │
-│         │                        │  Comms Agent     │  │
-│         └──────────────────────► │  (→ END)         │  │
+│  │    Agent    │ ◄────────────── │  Extraction Agt  │  │
+│  │  (Entry &   │   returns to    │  Memory Agent    │  │
+│  │   Router)   │                 │  Knowledge Agt   │  │
+│  └─────────────┘                 │  Matching Agent  │  │
+│         │                        │  Negotiation Agt │  │
+│         └──────────────────────► │  Booking Agent   │  │
+│                                  │  Scheduling Agt  │  │
+│                                  │  Comms Agent(END)│  │
 │                                  └──────────────────┘  │
 └───────────────────────┬────────────────────────────────┘
                         │
@@ -190,53 +197,51 @@ The LangGraph engine is a **state machine** where:
 
 ```
 flowtica/
-│
 ├── app/                          # Expo Router screens
-│   ├── (auth)/                   # Auth flow screens
-│   ├── (tabs)/                   # Main tab navigation
-│   ├── chat/                     # Real-time chat screens
-│   ├── booked-services/          # Booking management
-│   └── settings/                 # User settings
+│   ├── (app)/                    # Authenticated routes
+│   │   ├── (provider)/           # Seller-only screens
+│   │   │   └── provider.js       # Provider dashboard
+│   │   ├── booked-jobs/          # Provider's booked jobs list
+│   │   ├── booked-services/      # Customer's booked services list
+│   │   ├── chat/                 # AI chat interface & panel
+│   │   ├── profile/              # User profile & location editor
+│   │   └── settings/             # App settings & role switcher
+│   ├── auth/                     # Auth screens (Login / Register)
+│   ├── onboarding/               # First-time user setup & location
+│   └── _layout.js                # Root layout (Auth guard)
 │
-├── components/                   # Reusable UI components
-│   ├── modals/                   # LocationPickerModal, etc.
-│   ├── cards/                    # Booking & provider cards
-│   └── ui/                       # Buttons, inputs, icons
+├── backend/                      # Python AI Backend
+│   ├── agents/                   # LangGraph AI Agents
+│   │   ├── base.py               # BaseAgent class
+│   │   ├── service_agents.py     # RequestCreation, Booking, Scheduling agents
+│   │   └── orchestrator.py       # SupervisorAgent (routing & state machine)
+│   ├── core/                     # Core engine modules
+│   │   ├── knowledge_engine.py   # Hybrid retrieval (vector + fuzzy)
+│   │   ├── state.py              # AgentState TypedDict definition
+│   │   └── vector_store.py       # ChromaDB vector manager
+│   ├── models/                   # MongoDB data models
+│   │   ├── booking.py            # Booking document structure
+│   │   ├── provider.py           # Provider profile model
+│   │   └── user.py               # User model & profile sync
+│   ├── services/                 # Backend utility services
+│   │   └── location.py           # Geocoding & reverse geocoding
+│   ├── app.py                    # Flask app, all API routes & Socket.IO
+│   └── requirements.txt          # Python dependencies
+│
+├── components/                   # Shared React Native components
+│   ├── MiniMap.js                # Embeddable map preview component
+│   ├── LocationPickerModal.js    # Full-screen map picker with autocomplete
+│   └── ...                       # Other UI components
 │
 ├── services/                     # Frontend service layer
-│   ├── api.ts                    # HTTP API client
-│   ├── socket.ts                 # Socket.IO client
-│   ├── location.ts               # GPS & geocoding
-│   └── sound.ts                  # Notification sounds
+│   ├── api.js                    # Axios HTTP client
+│   ├── location.js               # Location & Places API service
+│   └── socket.js                 # Socket.IO real-time client
 │
-├── backend/                      # Python AI engine
-│   ├── agents/                   # LangGraph specialised agents
-│   │   ├── supervisor.py         # Routing authority
-│   │   ├── intent_agent.py       # NLP intent extraction
-│   │   ├── search_agent.py       # Provider discovery
-│   │   ├── booking_agent.py      # Booking simulation
-│   │   ├── negotiation_agent.py  # Price negotiation
-│   │   ├── followup_agent.py     # Reminders & updates
-│   │   └── communication_agent.py# Final response → END
-│   │
-│   ├── models/                   # MongoDB data models
-│   │   ├── user.py
-│   │   ├── provider.py
-│   │   └── booking.py
-│   │
-│   ├── core/                     # Core engine
-│   │   ├── graph.py              # LangGraph workflow definition
-│   │   ├── state.py              # Shared agent state schema
-│   │   ├── vector_store.py       # ChromaDB integration
-│   │   └── knowledge_base.py     # Service category data
-│   │
-│   ├── app.py                    # Flask entry point
-│   └── requirements.txt
-│
-├── assets/                       # Brand assets & static files
-├── .env                          # Frontend environment variables
-├── backend/.env                  # Backend environment variables
-└── README.md
+├── store/                        # Redux Toolkit state slices
+├── assets/                       # Images, fonts, icons
+├── app.json                      # Expo configuration
+└── package.json                  # JS dependencies
 ```
 
 ---
@@ -357,7 +362,7 @@ EXPO_PUBLIC_BACKEND_URL=http://localhost:5000
 EXPO_PUBLIC_GOOGLE_MAPS_KEY=your-google-maps-key
 ```
 
-> ⚠️ **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed. See [Privacy & Security](#privacy--security) for details.
+> ⚠️ **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed.
 
 ---
 
@@ -494,7 +499,7 @@ Intent → Booking → Scheduling → Communication
 
 ## 🎬 Demo
 
-> 📹 **Demo Video:** [Watch on YouTube](#) *(3–5 min walkthrough)*
+> 📹 **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
 
 The demo covers:
 - Natural language input (English + Roman Urdu)
@@ -510,7 +515,6 @@ The demo covers:
 
 | Area | Detail |
 |---|---|
-| **Provider Data** | Mock dataset used for provider discovery. Real Google Maps Places API integrated for location/geocoding only. |
 | **Booking System** | Booking is simulated — no real payment gateway is integrated. |
 | **Notifications** | In-app and Socket.IO only. SMS/WhatsApp delivery not implemented. |
 | **Pickle Serialisation** | LangGraph checkpoints currently use `pickle`. This should be replaced with JSON serialisation before any production deployment. |
@@ -520,44 +524,16 @@ The demo covers:
 
 ---
 
-## Privacy & Security
+## 🔒 Privacy & Security
 
 - **Authentication** is fully managed by Supabase (JWTs). The frontend never handles raw passwords.
-- **Gemini voice tokens** are single-use with a 5-minute expiry (`SESSION_EXPIRY_SECONDS=300`) and stored in-memory only.
-- **⚠️ Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are in `.gitignore`.
+
+- **⚠️ Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are listed in `.gitignore`.
 
 ---
 
-## 🗺 Roadmap
-
-- [ ] WhatsApp integration for service requests
-- [ ] Real payment gateway (Stripe / JazzCash)
-- [ ] SMS / push notification delivery
-- [ ] Provider verification & review system
-- [ ] Production-ready API authentication middleware
-- [ ] Replace pickle serialisation with JSON in LangGraph checkpoints
-- [ ] Multi-city support beyond Islamabad
-- [ ] Web dashboard for providers
 
 ---
-
-## 🤝 Contributing
-
-Contributions are welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add some amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a **Pull Request**
-
-Please make sure your code follows the existing style and includes relevant tests.
-
----
-
-## 📄 License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
 
 ---
 
