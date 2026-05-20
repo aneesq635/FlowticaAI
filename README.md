@@ -6,7 +6,7 @@
 
 ### *AI-Orchestrated Service Marketplace for the Informal Economy*
 
-> Connecting buyers with trusted local service providers — powered by multi-agent AI, real-time orchestration, and natural language understanding.
+> Connecting buyers with trusted local service providers powered by multi-agent AI, real-time orchestration, and natural language understanding.
 
 <br/>
 
@@ -21,9 +21,6 @@
 
 <br/>
 
-[**View Demo**](#demo) 
-
-</div>
 
 ---
 
@@ -50,21 +47,21 @@
 
 ---
 
-## 🌟 About The Project
+## About The Project
 
-**Flowtica** is an agentic AI system built for the informal service economy — connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
+**Flowtica** is an agentic AI system built for the informal service economy connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
 
-A user can simply type (or speak):
+A user can simply type:
 
 > *"Mujhe kal subah G-13 mein AC technician chahiye"*
 
-...and Flowtica's AI pipeline will extract intent, find the best nearby provider, simulate a booking, and schedule a follow-up reminder — all without manual intervention.
+...and Flowtica's AI pipeline will extract intent, find the best nearby provider, simulate a booking, and schedule a follow-up reminder all without manual intervention.
 
 Built as a submission for **Google Antigravity Challenge 2**, this project demonstrates end-to-end agentic automation using LangGraph as the core orchestration engine.
 
 ---
 
-## 🚨 The Problem We Solve
+## The Problem We Solve
 
 The informal economy operates largely through WhatsApp messages, phone calls, and word-of-mouth referrals. This leads to:
 
@@ -80,29 +77,29 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-### 🧠 AI-Driven Orchestration
+###  AI-Driven Orchestration
 - **Supervisor Agent** routes every request to the right specialised agent
 - **Intent Extraction** parses service type, location, date, and price from natural language — in **Urdu, Roman Urdu, and English**
 - **Negotiation Agent** handles counter-offers and real-time price discussions between buyers and sellers
 
-### 📍 Location Intelligence
+###  Location Intelligence
 - Interactive `LocationPickerModal` with autocomplete and draggable map pins
 - **MiniMap** integration on booking cards and provider profiles
 - **Reverse geocoding** to auto-resolve coordinates into human-readable addresses
 
-### ⚡ Real-time Everything
-- Socket.IO-powered live chat between buyers and sellers
+###  Real-time Everything
+- Socket.IO-powered live chat between buyers and sellers with the help of agent. Agent is like a middle man.
 - Instant push notifications for new requests, approvals, and status changes
 - Concurrent request safety via per-conversation threading locks
 
-### 🔄 Full Service Lifecycle
+###  Full Service Lifecycle
 - Role switching: one account can act as both **Buyer** and **Seller**
 - Booking snapshots that capture provider + customer location at booking time
 - Automated follow-up reminders and status confirmations
 
-### 🔍 Semantic Provider Matching
+###  Semantic Provider Matching
 - ChromaDB vector search matches service requests to providers by semantic similarity
 - Ranking by distance, availability, and rating with transparent reasoning
 
@@ -195,53 +192,52 @@ The LangGraph engine is a **state machine** where:
 
 ```
 flowtica/
-│
 ├── app/                          # Expo Router screens
-│   ├── (auth)/                   # Auth flow screens
-│   ├── (tabs)/                   # Main tab navigation
-│   ├── chat/                     # Real-time chat screens
-│   ├── booked-services/          # Booking management
-│   └── settings/                 # User settings
+│   ├── (app)/                    # Authenticated routes
+│   │   ├── (provider)/           # Seller-only screens
+│   │   │   └── provider.js       # Provider dashboard
+│   │   ├── booked-jobs/          # Provider's booked jobs list
+│   │   ├── booked-services/      # Customer's booked services list
+│   │   ├── chat/                 # AI chat interface & panel
+│   │   ├── profile/              # User profile & location editor
+│   │   └── settings/             # App settings & role switcher
+│   ├── auth/                     # Auth screens (Login / Register)
+│   ├── onboarding/               # First-time user setup & location
+│   └── _layout.js                # Root layout (Auth guard)
 │
-├── components/                   # Reusable UI components
-│   ├── modals/                   # LocationPickerModal, etc.
-│   ├── cards/                    # Booking & provider cards
-│   └── ui/                       # Buttons, inputs, icons
+├── backend/                      # Python AI Backend
+│   ├── agents/                   # LangGraph AI Agents
+│   │   ├── base.py               # BaseAgent class
+│   │   ├── service_agents.py     # RequestCreation, Booking, Scheduling agents
+│   │   └── orchestrator.py       # SupervisorAgent (routing & state machine)
+│   ├── core/                     # Core engine modules
+│   │   ├── knowledge_engine.py   # Hybrid retrieval (vector + fuzzy)
+│   │   ├── state.py              # AgentState TypedDict definition
+│   │   └── vector_store.py       # ChromaDB vector manager
+│   ├── models/                   # MongoDB data models
+│   │   ├── booking.py            # Booking document structure
+│   │   ├── provider.py           # Provider profile model
+│   │   └── user.py               # User model & profile sync
+│   ├── services/                 # Backend utility services
+│   │   └── location.py           # Geocoding & reverse geocoding
+│   ├── app.py                    # Flask app, all API routes & Socket.IO
+│   └── requirements.txt          # Python dependencies
+│
+├── components/                   # Shared React Native components
+│   ├── MiniMap.js                # Embeddable map preview component
+│   ├── LocationPickerModal.js    # Full-screen map picker with autocomplete
+│   └── ...                       # Other UI components
 │
 ├── services/                     # Frontend service layer
-│   ├── api.ts                    # HTTP API client
-│   ├── socket.ts                 # Socket.IO client
-│   ├── location.ts               # GPS & geocoding
-│   └── sound.ts                  # Notification sounds
+│   ├── api.js                    # Axios HTTP client
+│   ├── location.js               # Location & Places API service
+│   └── socket.js                 # Socket.IO real-time client
 │
-├── backend/                      # Python AI engine
-│   ├── agents/                   # LangGraph specialised agents
-│   │   ├── supervisor.py         # Routing authority
-│   │   ├── intent_agent.py       # NLP intent extraction
-│   │   ├── search_agent.py       # Provider discovery
-│   │   ├── booking_agent.py      # Booking simulation
-│   │   ├── negotiation_agent.py  # Price negotiation
-│   │   ├── followup_agent.py     # Reminders & updates
-│   │   └── communication_agent.py# Final response → END
-│   │
-│   ├── models/                   # MongoDB data models
-│   │   ├── user.py
-│   │   ├── provider.py
-│   │   └── booking.py
-│   │
-│   ├── core/                     # Core engine
-│   │   ├── graph.py              # LangGraph workflow definition
-│   │   ├── state.py              # Shared agent state schema
-│   │   ├── vector_store.py       # ChromaDB integration
-│   │   └── knowledge_base.py     # Service category data
-│   │
-│   ├── app.py                    # Flask entry point
-│   └── requirements.txt
-│
-├── assets/                       # Brand assets & static files
-├── .env                          # Frontend environment variables
-├── backend/.env                  # Backend environment variables
-└── README.md
+├── store/                        # Redux Toolkit state slices
+├── assets/                       # Images, fonts, icons
+├── app.json                      # Expo configuration
+└── package.json                  # JS dependencies
+
 ```
 
 ---
@@ -362,72 +358,125 @@ EXPO_PUBLIC_BACKEND_URL=http://localhost:5000
 EXPO_PUBLIC_GOOGLE_MAPS_KEY=your-google-maps-key
 ```
 
-> ⚠️ **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed. See [Privacy & Security](#privacy--security) for details.
+>  **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed. See [Privacy & Security](#privacy--security) for details.
 
 ---
-
 ## 🤖 Multi-Agent Workflow
-
-A full request goes through the following pipeline:
-
+ 
+Flowtica's backend is a **modular multi-agent system** orchestrated by LangGraph. The `SupervisorAgent` acts as the single entry point and routing authority — every other agent returns control to it after completing its task.
+ 
+---
+ 
+### Agent Roster
+ 
+| Agent | Role |
+|---|---|
+| **SupervisorAgent** | The orchestrator. Routes between agents based on conversation stage, enforces loop guards, and handles errors. |
+| **IntentAgent** | Classifies what the user wants — service request, status check, booking confirmation, etc. Uses rule-based pre-classification with LLM fallback. |
+| **ExtractionAgent** | Pulls structured data from the message: `service_type`, `location`, `requested_date`, `time`, and `provider_selection`. |
+| **MemoryAgent** | Session + profile memory. Loads conversation history and rehydrates prior context so agents have full situational awareness. |
+| **KnowledgeAgent** | The search engine. Queries MongoDB and ChromaDB (vector search) to fetch available services and nearby providers. |
+| **MatchingAgent** | Ranking engine. Takes the provider list from `KnowledgeAgent` and sorts by rating, reliability, and experience to surface the best options. |
+| **NegotiationAgent** | Handles provider outreach, price matching, date alignment, and multi-turn negotiation stages. |
+| **RequestCreationAgent** | Safely inserts and verifies a new active request document in MongoDB. |
+| **BookingAgent** | Confirms bookings — only signals success after verifying the database was actually updated. |
+| **SchedulingAgent** | Handles final scheduling details once a booking is confirmed: reminders, slot locking, and follow-up triggers. |
+| **CommunicationAgent** | The outward-facing frontier. Generates the final user-facing response strictly from internal state built by all prior agents. Transitions to `END`. |
+ 
+---
+ 
+### The 3 Pipelines
+ 
+The `SupervisorAgent` routes to one of three distinct pipelines depending on what the `IntentAgent` detects.
+ 
+#### 1️⃣ Service Request Pipeline
+> *Triggered when: user asks for a service — e.g., "I need an AC technician in G-13 tomorrow morning"*
+ 
 ```
-User Input (Urdu / Roman Urdu / English)
-        │
-        ▼
-  [Intent Agent]
-  Extracts: service_type, location, datetime, budget
-        │
-        ▼
-  [Search Agent]
-  Queries ChromaDB + Google Maps
-  Returns: ranked provider list with distances & ratings
-        │
-        ▼
-  [Booking Agent]
-  Simulates: slot reservation, confirmation message,
-             database write, booking receipt generation
-        │
-        ▼
-  [Negotiation Agent]  ◄── (triggered if price dispute)
-  Handles: counter-offers, acceptance/rejection flow
-        │
-        ▼
-  [Follow-up Agent]
-  Schedules: reminders, status updates, completion confirmation
-        │
-        ▼
-  [Communication Agent]
-  Formats final response → emits via Socket.IO → END
+Intent → Extraction → Memory → Knowledge → Matching → Communication
 ```
-
-### Example Request
-
-**Input:**
+ 
+| Step | What Happens |
+|---|---|
+| Intent | Classifies as `service_request` |
+| Extraction | Pulls service type, location, date/time |
+| Memory | Loads user profile and prior context |
+| Knowledge | Fetches nearby providers from DB + vector search |
+| Matching | Ranks providers by rating, distance, availability |
+| Communication | Presents top options with reasoning to the user |
+ 
+---
+ 
+#### 2️⃣ Provider Selection Pipeline
+> *Triggered when: user picks a provider and shares details — e.g., "Book Ali AC Services for 10 AM"*
+ 
 ```
-"Mujhe kal subah G-13 mein AC technician chahiye"
+Intent → Extraction → Negotiation → RequestCreation → Communication
 ```
-
-**Extracted Intent:**
-```json
-{
-  "service_type": "AC Technician",
-  "location": "G-13, Islamabad",
-  "time": "Tomorrow morning"
-}
+ 
+| Step | What Happens |
+|---|---|
+| Intent | Classifies as `provider_selection` |
+| Extraction | Pulls provider choice, time, and price |
+| Negotiation | Prepares the request, aligns price and schedule |
+| RequestCreation | Saves the active request to MongoDB |
+| Communication | Tells user to wait for provider confirmation |
+ 
+---
+ 
+#### 3️⃣ Booking Confirmation Pipeline
+> *Triggered when: user confirms — e.g., "Yes, go ahead" / "Confirm karo"*
+ 
 ```
-
-**System Output:**
+Intent → Booking → Scheduling → Communication
 ```
-✅ Recommended Provider:  Ali AC Services (2.1 km away)
-   Reasoning:             Closest available · Rating 4.8 ★
-   Booked Slot:           10:00 AM — Tomorrow
-   Confirmation:          Sent via Socket.IO
-   Follow-up Reminder:    Scheduled 1 hour before appointment
+ 
+| Step | What Happens |
+|---|---|
+| Intent | Classifies as `booking_confirmation` |
+| Booking | Verifies and commits the booking in MongoDB |
+| Scheduling | Locks the slot, sets reminders and follow-ups |
+| Communication | Delivers final confirmation summary to the user |
+ 
+---
+ 
+### Example: End-to-End Flow
+ 
+**User says:** `"Mujhe kal subah G-13 mein AC technician chahiye"`
+ 
 ```
-
+[SupervisorAgent]       → detects new service request → Pipeline 1
+ 
+[IntentAgent]           → service_request
+[ExtractionAgent]       → { service: "AC Technician", location: "G-13", time: "Tomorrow AM" }
+[MemoryAgent]           → loads user profile & history
+[KnowledgeAgent]        → fetches 5 nearby AC providers via vector search
+[MatchingAgent]         → ranks by rating + distance → Ali AC Services #1
+[CommunicationAgent]    → "Here are the top providers near G-13..."
+ 
+  ── user selects Ali AC Services ──────────────────────────────
+ 
+[SupervisorAgent]       → provider selected → Pipeline 2
+ 
+[IntentAgent]           → provider_selection
+[ExtractionAgent]       → { provider: "Ali AC Services", time: "10:00 AM" }
+[NegotiationAgent]      → prepares outbound request & price alignment
+[RequestCreationAgent]  → saves active_request to MongoDB 
+[CommunicationAgent]    → "Request sent! Waiting for provider confirmation..."
+ 
+  ── user confirms ─────────────────────────────────────────────
+ 
+[SupervisorAgent]       → booking confirmed → Pipeline 3
+ 
+[IntentAgent]           → booking_confirmation
+[BookingAgent]          → verifies & commits booking in MongoDB 
+[SchedulingAgent]       → reminder set for 9:00 AM tomorrow
+[CommunicationAgent]    → "Booked! Ali AC Services at 10:00 AM. Reminder set. "
+```
+ 
 ---
 
-## 📡 API Reference
+##  API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -443,9 +492,9 @@ User Input (Urdu / Roman Urdu / English)
 
 ---
 
-## 🎬 Demo
+##  Demo
 
-> 📹 **Demo Video:** [Watch on YouTube](#) *(3–5 min walkthrough)*
+>  **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
 
 The demo covers:
 - Natural language input (English + Roman Urdu)
@@ -457,11 +506,10 @@ The demo covers:
 
 ---
 
-## ⚠️ Assumptions & Limitations
+##  Assumptions & Limitations
 
 | Area | Detail |
 |---|---|
-| **Provider Data** | Mock dataset used for provider discovery. Real Google Maps Places API integrated for location/geocoding only. |
 | **Booking System** | Booking is simulated — no real payment gateway is integrated. |
 | **Notifications** | In-app and Socket.IO only. SMS/WhatsApp delivery not implemented. |
 | **Pickle Serialisation** | LangGraph checkpoints currently use `pickle`. This should be replaced with JSON serialisation before any production deployment. |
@@ -474,12 +522,11 @@ The demo covers:
 ## Privacy & Security
 
 - **Authentication** is fully managed by Supabase (JWTs). The frontend never handles raw passwords.
-- **Gemini voice tokens** are single-use with a 5-minute expiry (`SESSION_EXPIRY_SECONDS=300`) and stored in-memory only.
-- **⚠️ Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are in `.gitignore`.
+- ** Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are in `.gitignore`.
 
 ---
 
-## 🗺 Roadmap
+##  Roadmap
 
 - [ ] WhatsApp integration for service requests
 - [ ] Real payment gateway (Stripe / JazzCash)
@@ -490,25 +537,6 @@ The demo covers:
 - [ ] Multi-city support beyond Islamabad
 - [ ] Web dashboard for providers
 
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add some amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a **Pull Request**
-
-Please make sure your code follows the existing style and includes relevant tests.
-
----
-
-## 📄 License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
 
 ---
 
