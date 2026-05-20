@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/Flowtica-AI%20Service%20Orchestrator-6C63FF?style=for-the-badge&logoColor=white" alt="Flowtica" height="40"/>
 
-# Flowtica 🤖
+# Flowtica 
 
 ### *AI-Orchestrated Service Marketplace for the Informal Economy*
 
@@ -17,17 +17,13 @@
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongodb.com)
 [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 <br/>
 
-[**View Demo**](#demo) · [**Report Bug**](issues) · [**Request Feature**](issues)
-
-</div>
 
 ---
 
-## 📖 Table of Contents
+##  Table of Contents
 
 - [About The Project](#-about-the-project)
 - [The Problem We Solve](#-the-problem-we-solve)
@@ -45,14 +41,12 @@
 - [Demo](#-demo)
 - [Assumptions & Limitations](#-assumptions--limitations)
 - [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
 
 ---
 
-## 🌟 About The Project
+##  About The Project
 
-**Flowtica** is an agentic AI system built for the informal service economy — connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
+**Flowtica** is an agentic AI system built for the informal service economy connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
 
 A user can simply type (or speak):
 
@@ -64,7 +58,7 @@ Built as a submission for **Google Antigravity Challenge 2**, this project demon
 
 ---
 
-## 🚨 The Problem We Solve
+## The Problem We Solve
 
 The informal economy operates largely through WhatsApp messages, phone calls, and word-of-mouth referrals. This leads to:
 
@@ -80,24 +74,25 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-### 🧠 AI-Driven Orchestration
+###  AI-Driven Orchestration
 - **Supervisor Agent** routes every request to the right specialised agent
 - **Intent Extraction** parses service type, location, date, and price from natural language — in **Urdu, Roman Urdu, and English**
 - **Negotiation Agent** handles counter-offers and real-time price discussions between buyers and sellers
 
-### 📍 Location Intelligence
+### Location Intelligence
 - Interactive `LocationPickerModal` with autocomplete and draggable map pins
 - **MiniMap** integration on booking cards and provider profiles
 - **Reverse geocoding** to auto-resolve coordinates into human-readable addresses
 
-### ⚡ Real-time Everything
-- Socket.IO-powered live chat between buyers and sellers
+###  Real-time Everything
+- Socket.IO-powered live chat between buyers and sellers with the help of agent.
+  Agent is like middleman.
 - Instant push notifications for new requests, approvals, and status changes
 - Concurrent request safety via per-conversation threading locks
 
-### 🔄 Full Service Lifecycle
+###  Full Service Lifecycle
 - Role switching: one account can act as both **Buyer** and **Seller**
 - Booking snapshots that capture provider + customer location at booking time
 - Automated follow-up reminders and status confirmations
@@ -108,7 +103,7 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-## 🏗 System Architecture
+## System Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
