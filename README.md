@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/Flowtica-AI%20Service%20Orchestrator-6C63FF?style=for-the-badge&logoColor=white" alt="Flowtica" height="40"/>
 
-# Flowtica 🤖
+# Flowtica 
 
 ### *AI-Orchestrated Service Marketplace for the Informal Economy*
 
@@ -17,17 +17,14 @@
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongodb.com)
 [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 <br/>
-
-[**View Demo**](#-demo) · [**Report Bug**](issues) · [**Request Feature**](issues)
 
 </div>
 
 ---
 
-## 📖 Table of Contents
+##  Table of Contents
 
 - [About The Project](#-about-the-project)
 - [The Problem We Solve](#-the-problem-we-solve)
@@ -44,13 +41,10 @@
 - [API Reference](#-api-reference)
 - [Demo](#-demo)
 - [Assumptions & Limitations](#-assumptions--limitations)
-- [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
 
 ---
 
-## 🌟 About The Project
+##  About The Project
 
 **Flowtica** is an agentic AI system built for the informal service economy — connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
 
@@ -64,7 +58,7 @@ Built as a submission for **Google Antigravity Challenge 2**, this project demon
 
 ---
 
-## 🚨 The Problem We Solve
+##  The Problem We Solve
 
 The informal economy operates largely through WhatsApp messages, phone calls, and word-of-mouth referrals. This leads to:
 
@@ -80,35 +74,35 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-### 🧠 AI-Driven Orchestration
+###  AI-Driven Orchestration
 - **Supervisor Agent** routes every request to the right specialised agent
 - **Intent Extraction** parses service type, location, date, and price from natural language — in **Urdu, Roman Urdu, and English**
 - **Negotiation Agent** handles counter-offers and real-time price discussions between buyers and sellers
 
-### 📍 Location Intelligence
+###  Location Intelligence
 - Interactive `LocationPickerModal` with autocomplete and draggable map pins
 - **MiniMap** integration on booking cards and provider profiles
 - **Reverse geocoding** to auto-resolve coordinates into human-readable addresses
 
-### ⚡ Real-time Everything
+###  Real-time Everything
 - Socket.IO-powered live chat between buyers and sellers — the AI agent acts as an intelligent middle man
 - Instant push notifications for new requests, approvals, and status changes
 - Concurrent request safety via per-conversation threading locks
 
-### 🔄 Full Service Lifecycle
+### Full Service Lifecycle
 - Role switching: one account can act as both **Buyer** and **Seller**
 - Booking snapshots that capture provider + customer location at booking time
 - Automated follow-up reminders and status confirmations
 
-### 🔍 Semantic Provider Matching
+### Semantic Provider Matching
 - ChromaDB vector search matches service requests to providers by semantic similarity
 - Ranking by distance, availability, and rating with transparent reasoning
 
 ---
 
-## 🏗 System Architecture
+## System Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -193,7 +187,7 @@ The LangGraph engine is a **state machine** where:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 flowtica/
@@ -246,7 +240,7 @@ flowtica/
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -330,7 +324,7 @@ Or scan the QR code from `expo start` using the **Expo Go** app.
 
 ---
 
-## 🔐 Environment Variables
+##  Environment Variables
 
 ### Backend (`backend/.env`)
 
@@ -362,11 +356,11 @@ EXPO_PUBLIC_BACKEND_URL=http://localhost:5000
 EXPO_PUBLIC_GOOGLE_MAPS_KEY=your-google-maps-key
 ```
 
-> ⚠️ **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed.
+> **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed.
 
 ---
 
-## 🤖 Multi-Agent Workflow
+##  Multi-Agent Workflow
 
 Flowtica's backend is a **modular multi-agent system** orchestrated by LangGraph. The `SupervisorAgent` acts as the single entry point and routing authority — every other agent returns control to it after completing its task.
 
@@ -466,7 +460,7 @@ Intent → Booking → Scheduling → Communication
 [IntentAgent]           → provider_selection
 [ExtractionAgent]       → { provider: "Ali AC Services", time: "10:00 AM" }
 [NegotiationAgent]      → prepares outbound request & price alignment
-[RequestCreationAgent]  → saves active_request to MongoDB ✅
+[RequestCreationAgent]  → saves active_request to MongoDB
 [CommunicationAgent]    → "Request sent! Waiting for provider confirmation..."
 
   ── user confirms ─────────────────────────────────────────────
@@ -474,14 +468,14 @@ Intent → Booking → Scheduling → Communication
 [SupervisorAgent]       → booking confirmed → Pipeline 3
 
 [IntentAgent]           → booking_confirmation
-[BookingAgent]          → verifies & commits booking in MongoDB ✅
+[BookingAgent]          → verifies & commits booking in MongoDB 
 [SchedulingAgent]       → reminder set for 9:00 AM tomorrow
-[CommunicationAgent]    → "Booked! Ali AC Services at 10:00 AM. Reminder set. ✅"
+[CommunicationAgent]    → "Booked! Ali AC Services at 10:00 AM. Reminder set."
 ```
 
 ---
 
-## 📡 API Reference
+##  API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -497,9 +491,9 @@ Intent → Booking → Scheduling → Communication
 
 ---
 
-## 🎬 Demo
+## Demo
 
-> 📹 **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
+>  **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
 
 The demo covers:
 - Natural language input (English + Roman Urdu)
@@ -511,7 +505,7 @@ The demo covers:
 
 ---
 
-## ⚠️ Assumptions & Limitations
+## Assumptions & Limitations
 
 | Area | Detail |
 |---|---|
@@ -524,16 +518,11 @@ The demo covers:
 
 ---
 
-## 🔒 Privacy & Security
+## Privacy & Security
 
 - **Authentication** is fully managed by Supabase (JWTs). The frontend never handles raw passwords.
 
-- **⚠️ Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are listed in `.gitignore`.
-
----
-
-
----
+- **Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are listed in `.gitignore`.
 
 ---
 
