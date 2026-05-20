@@ -1260,12 +1260,14 @@ def build_enriched_service_document(data, existing_id=None):
     reliability_score = 0.95
     review_count = 12
     cancellation_rate = 0.02
+    provider_location_data = {}
     
     if provider_doc:
         provider_name = provider_doc.get("name") or provider_name
         provider_phone = provider_doc.get("phone") or provider_phone
         provider_email = provider_doc.get("email") or provider_email
         provider_location = provider_doc.get("location") or provider_location
+        provider_location_data = provider_doc.get("location_data") or {}
         provider_rating = float(provider_doc.get("rating") or provider_rating)
         reliability_score = float(provider_doc.get("reliability_score") or reliability_score)
         review_count = int(provider_doc.get("review_count") or review_count)
@@ -1282,6 +1284,8 @@ def build_enriched_service_document(data, existing_id=None):
             provider_email = user_doc.get("email") or provider_email
         if not provider_location:
             provider_location = user_doc.get("location") or provider_location
+        if not provider_location_data:
+            provider_location_data = user_doc.get("location_data") or {}
 
     service_name = data.get("service_name") or data.get("name") or "General Service"
     service_location = data.get("service_location") or data.get("location") or "Unknown"
@@ -1302,6 +1306,7 @@ def build_enriched_service_document(data, existing_id=None):
         "provider_phone": provider_phone,
         "provider_email": provider_email,
         "provider_location": provider_location,
+        "provider_location_data": provider_location_data,
         "provider_rating": provider_rating,
         
         "service_name": service_name,
@@ -1646,6 +1651,9 @@ def respond_to_request(request_id):
                 "requested_date": final_date,
                 "requested_time": final_time,
                 "location": req_doc.get("location") or customer_location,
+                "location_data": req_doc.get("customer_location_data") or {},
+                "provider_location_data": req_doc.get("provider_location_data") or {},
+                "customer_location_data": req_doc.get("customer_location_data") or {},
                 "status": "confirmed",
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
