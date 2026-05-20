@@ -17,55 +17,77 @@ const ChatMessage = ({ message }) => {
 
   return (
     <MotiView
-      from={{ opacity: 0, translateY: 15, scale: 0.98 }}
-      animate={{ opacity: 1, translateY: 0, scale: 1 }}
-      transition={{ type: 'timing', duration: 400 }}
-      className={`mb-6 max-w-[85%] ${isUser ? 'self-end' : 'self-start'}`}
-    >
-      {/* items-start — avatar top pe rahega chahe message kitna bhi lamba ho */}
-      <View className={`flex-row ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start`}>
-        
-        {/* Bot Avatar */}
-        {!isUser && (
-          <View className={`w-8 h-8 rounded-full items-center justify-center mr-2 mt-1 shrink-0 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-            <Bot size={16} color={isDark ? '#64748b' : '#94a3b8'} />
-          </View>
-        )}
+  from={{ opacity: 0, translateY: 15, scale: 0.98 }}
+  animate={{ opacity: 1, translateY: 0, scale: 1 }}
+  transition={{ type: 'timing', duration: 400 }}
+  style={{
+    marginBottom: 24,
+    maxWidth: '85%',
+    alignSelf: isUser ? 'flex-end' : 'flex-start',
+  }}
+>
+  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
 
-        {/* Bubble */}
-        <View className={`
-          p-4 rounded-[24px]
-          ${isUser
-            ? (isDark
-                ? 'bg-slate-800 border border-slate-700 rounded-tr-sm'
-                : 'bg-slate-900 rounded-tr-sm')
-            : (isDark
-                ? 'bg-slate-900 border border-slate-800 rounded-tl-sm'
-                : 'bg-white border border-slate-100 rounded-tl-sm')
-          }
-        `}>
-          <Text className={`text-sm leading-5 ${isUser ? 'text-white' : (isDark ? 'text-slate-200' : 'text-slate-800')}`}>
-            {message.content}
-          </Text>
-
-          {message.agent && (
-            <View className={`flex-row items-center mt-3 px-2 py-1 rounded-md ${isDark ? 'bg-white/5' : 'bg-slate-50'}`}>
-              <Sparkles size={10} color={isDark ? '#64748b' : '#94a3b8'} />
-              <Text className={`text-xs ml-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {message.agent}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* User Avatar */}
-        {isUser && (
-          <View className={`w-8 h-8 rounded-full items-center justify-center ml-2 mt-1 shrink-0 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
-            <User size={16} color={isDark ? '#fff' : '#000'} />
-          </View>
-        )}
+    {/* Bot Avatar - left side */}
+    {!isUser && (
+      <View style={{
+        width: 32, height: 32, borderRadius: 16,
+        alignItems: 'center', justifyContent: 'center',
+        marginRight: 8, marginTop: 4, flexShrink: 0,
+        backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
+      }}>
+        <Bot size={16} color={isDark ? '#64748b' : '#94a3b8'} />
       </View>
-    </MotiView>
+    )}
+
+    {/* Bubble */}
+    <View style={{
+      padding: 16,
+      borderRadius: 24,
+      borderTopRightRadius: isUser ? 4 : 24,
+      borderTopLeftRadius: isUser ? 24 : 4,
+      flexShrink: 1,
+      backgroundColor: isUser
+        ? (isDark ? '#1e293b' : '#0f172a')
+        : (isDark ? '#0f172a' : '#ffffff'),
+      borderWidth: isUser ? 0 : 1,
+      borderColor: isDark ? '#1e293b' : '#f1f5f9',
+    }}>
+      <Text style={{
+        fontSize: 14, lineHeight: 20,
+        color: isUser ? '#ffffff' : (isDark ? '#e2e8f0' : '#1e293b'),
+      }}>
+        {message.content}
+      </Text>
+
+      {message.agent && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center',
+          marginTop: 12, paddingHorizontal: 8, paddingVertical: 4,
+          borderRadius: 6,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+        }}>
+          <Sparkles size={10} color={isDark ? '#64748b' : '#94a3b8'} />
+          <Text style={{ fontSize: 12, marginLeft: 6, color: isDark ? '#94a3b8' : '#64748b' }}>
+            {message.agent}
+          </Text>
+        </View>
+      )}
+    </View>
+
+    {/* User Avatar - right side */}
+    {isUser && (
+      <View style={{
+        width: 32, height: 32, borderRadius: 16,
+        alignItems: 'center', justifyContent: 'center',
+        marginLeft: 8, marginTop: 4, flexShrink: 0,
+        backgroundColor: isDark ? '#1e293b' : '#e2e8f0',
+      }}>
+        <User size={16} color={isDark ? '#ffffff' : '#000000'} />
+      </View>
+    )}
+  </View>
+</MotiView>
   );
 };
 const OrchestrationStatus = () => {
@@ -126,6 +148,20 @@ const ChatPanel = () => {
   });
   return () => { show.remove(); hide.remove(); };
 }, []);
+// Replace your existing keyboardHeight useEffect with this:
+React.useEffect(() => {
+  const show = Keyboard.addListener('keyboardDidShow', () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  });
+  const hide = Keyboard.addListener('keyboardDidHide', () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  });
+  return () => { show.remove(); hide.remove(); };
+}, []);
 
   useEffect(() => {
     if (scrollViewRef.current) {
@@ -163,22 +199,25 @@ const ChatPanel = () => {
       console.error('[CHAT PANEL ERROR] Exception inside handleSend:', err);
     }
   };
+  
 
   // const isDark = useSelector(state => state.orchestration.theme) === 'dark';
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  behavior="padding"
   className="flex-1"
-  keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+  keyboardVerticalOffset={80}
+>
       <OrchestrationStatus />
 
       <ScrollView
-       ref={scrollViewRef}
+      ref={scrollViewRef}
   className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
- contentContainerStyle={{ padding: 24, paddingBottom: 160 }}
+  contentContainerStyle={{ padding: 24, paddingBottom: 220 }}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="handled"
+  automaticallyAdjustKeyboardInsets={true}
+
       >
         <AnimatePresence>
           {messages.length === 0 ? (

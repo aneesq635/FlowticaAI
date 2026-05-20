@@ -29,6 +29,7 @@
     "react-hook-form": "^7.76.0",
     "react-native": "^0.81.5",
     "react-native-element-dropdown": "^2.12.4",
+    "react-native-keyboard-controller": "1.18.5",
     "react-native-modal": "^14.0.0-rc.1",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
