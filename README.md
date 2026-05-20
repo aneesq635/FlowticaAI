@@ -6,7 +6,7 @@
 
 ### *AI-Orchestrated Service Marketplace for the Informal Economy*
 
-> Connecting buyers with trusted local service providers powered by multi-agent AI, real-time orchestration, and natural language understanding.
+> Connecting buyers with trusted local service providers — powered by multi-agent AI, real-time orchestration, and natural language understanding.
 
 <br/>
 
@@ -17,14 +17,12 @@
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongodb.com)
 [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
 
 <br/>
-
-
 ---
 
-## 📖 Table of Contents
+##  Table of Contents
 
 - [About The Project](#-about-the-project)
 - [The Problem We Solve](#-the-problem-we-solve)
@@ -42,26 +40,24 @@
 - [Demo](#-demo)
 - [Assumptions & Limitations](#-assumptions--limitations)
 - [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
 
 ---
 
-## About The Project
+##  About The Project
 
-**Flowtica** is an agentic AI system built for the informal service economy connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
+**Flowtica** is an agentic AI system built for the informal service economy — connecting users with local plumbers, electricians, tutors, beauticians, and other home service providers. Unlike traditional booking apps, Flowtica does not just list services; it *reasons*, *negotiates*, and *acts* autonomously.
 
-A user can simply type:
+A user can simply type (or speak):
 
 > *"Mujhe kal subah G-13 mein AC technician chahiye"*
 
-...and Flowtica's AI pipeline will extract intent, find the best nearby provider, simulate a booking, and schedule a follow-up reminder all without manual intervention.
+...and Flowtica's AI pipeline will extract intent, find the best nearby provider, simulate a booking, and schedule a follow-up reminder — all without manual intervention.
 
 Built as a submission for **Google Antigravity Challenge 2**, this project demonstrates end-to-end agentic automation using LangGraph as the core orchestration engine.
 
 ---
 
-## The Problem We Solve
+##  The Problem We Solve
 
 The informal economy operates largely through WhatsApp messages, phone calls, and word-of-mouth referrals. This leads to:
 
@@ -94,7 +90,7 @@ Flowtica addresses all of these through a single conversational interface backed
 - Instant push notifications for new requests, approvals, and status changes
 - Concurrent request safety via per-conversation threading locks
 
-###  Full Service Lifecycle
+### Full Service Lifecycle
 - Role switching: one account can act as both **Buyer** and **Seller**
 - Booking snapshots that capture provider + customer location at booking time
 - Automated follow-up reminders and status confirmations
@@ -105,7 +101,7 @@ Flowtica addresses all of these through a single conversational interface backed
 
 ---
 
-## 🏗 System Architecture
+##  System Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -237,12 +233,11 @@ flowtica/
 ├── assets/                       # Images, fonts, icons
 ├── app.json                      # Expo configuration
 └── package.json                  # JS dependencies
-
 ```
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -346,7 +341,7 @@ GOOGLE_MAPS_API_KEY=your-google-maps-key
 
 # App Config
 FLASK_ENV=development
-SESSION_EXPIRY_SECONDS=300
+
 ```
 
 ### Frontend (`.env`)
@@ -361,14 +356,15 @@ EXPO_PUBLIC_GOOGLE_MAPS_KEY=your-google-maps-key
 >  **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed. See [Privacy & Security](#privacy--security) for details.
 
 ---
+
 ## 🤖 Multi-Agent Workflow
- 
+
 Flowtica's backend is a **modular multi-agent system** orchestrated by LangGraph. The `SupervisorAgent` acts as the single entry point and routing authority — every other agent returns control to it after completing its task.
- 
+
 ---
- 
+
 ### Agent Roster
- 
+
 | Agent | Role |
 |---|---|
 | **SupervisorAgent** | The orchestrator. Routes between agents based on conversation stage, enforces loop guards, and handles errors. |
@@ -382,20 +378,20 @@ Flowtica's backend is a **modular multi-agent system** orchestrated by LangGraph
 | **BookingAgent** | Confirms bookings — only signals success after verifying the database was actually updated. |
 | **SchedulingAgent** | Handles final scheduling details once a booking is confirmed: reminders, slot locking, and follow-up triggers. |
 | **CommunicationAgent** | The outward-facing frontier. Generates the final user-facing response strictly from internal state built by all prior agents. Transitions to `END`. |
- 
+
 ---
- 
+
 ### The 3 Pipelines
- 
+
 The `SupervisorAgent` routes to one of three distinct pipelines depending on what the `IntentAgent` detects.
- 
+
 #### 1️⃣ Service Request Pipeline
 > *Triggered when: user asks for a service — e.g., "I need an AC technician in G-13 tomorrow morning"*
- 
+
 ```
 Intent → Extraction → Memory → Knowledge → Matching → Communication
 ```
- 
+
 | Step | What Happens |
 |---|---|
 | Intent | Classifies as `service_request` |
@@ -404,16 +400,16 @@ Intent → Extraction → Memory → Knowledge → Matching → Communication
 | Knowledge | Fetches nearby providers from DB + vector search |
 | Matching | Ranks providers by rating, distance, availability |
 | Communication | Presents top options with reasoning to the user |
- 
+
 ---
- 
+
 #### 2️⃣ Provider Selection Pipeline
 > *Triggered when: user picks a provider and shares details — e.g., "Book Ali AC Services for 10 AM"*
- 
+
 ```
 Intent → Extraction → Negotiation → RequestCreation → Communication
 ```
- 
+
 | Step | What Happens |
 |---|---|
 | Intent | Classifies as `provider_selection` |
@@ -421,62 +417,62 @@ Intent → Extraction → Negotiation → RequestCreation → Communication
 | Negotiation | Prepares the request, aligns price and schedule |
 | RequestCreation | Saves the active request to MongoDB |
 | Communication | Tells user to wait for provider confirmation |
- 
+
 ---
- 
+
 #### 3️⃣ Booking Confirmation Pipeline
 > *Triggered when: user confirms — e.g., "Yes, go ahead" / "Confirm karo"*
- 
+
 ```
 Intent → Booking → Scheduling → Communication
 ```
- 
+
 | Step | What Happens |
 |---|---|
 | Intent | Classifies as `booking_confirmation` |
 | Booking | Verifies and commits the booking in MongoDB |
 | Scheduling | Locks the slot, sets reminders and follow-ups |
 | Communication | Delivers final confirmation summary to the user |
- 
+
 ---
- 
+
 ### Example: End-to-End Flow
- 
+
 **User says:** `"Mujhe kal subah G-13 mein AC technician chahiye"`
- 
+
 ```
 [SupervisorAgent]       → detects new service request → Pipeline 1
- 
+
 [IntentAgent]           → service_request
 [ExtractionAgent]       → { service: "AC Technician", location: "G-13", time: "Tomorrow AM" }
 [MemoryAgent]           → loads user profile & history
 [KnowledgeAgent]        → fetches 5 nearby AC providers via vector search
 [MatchingAgent]         → ranks by rating + distance → Ali AC Services #1
 [CommunicationAgent]    → "Here are the top providers near G-13..."
- 
+
   ── user selects Ali AC Services ──────────────────────────────
- 
+
 [SupervisorAgent]       → provider selected → Pipeline 2
- 
+
 [IntentAgent]           → provider_selection
 [ExtractionAgent]       → { provider: "Ali AC Services", time: "10:00 AM" }
 [NegotiationAgent]      → prepares outbound request & price alignment
 [RequestCreationAgent]  → saves active_request to MongoDB 
 [CommunicationAgent]    → "Request sent! Waiting for provider confirmation..."
- 
+
   ── user confirms ─────────────────────────────────────────────
- 
+
 [SupervisorAgent]       → booking confirmed → Pipeline 3
- 
+
 [IntentAgent]           → booking_confirmation
 [BookingAgent]          → verifies & commits booking in MongoDB 
 [SchedulingAgent]       → reminder set for 9:00 AM tomorrow
 [CommunicationAgent]    → "Booked! Ali AC Services at 10:00 AM. Reminder set. "
 ```
- 
+
 ---
 
-##  API Reference
+## 📡 API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -492,9 +488,9 @@ Intent → Booking → Scheduling → Communication
 
 ---
 
-##  Demo
+## 🎬 Demo
 
->  **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
+> 📹 **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
 
 The demo covers:
 - Natural language input (English + Roman Urdu)
@@ -522,11 +518,11 @@ The demo covers:
 ## Privacy & Security
 
 - **Authentication** is fully managed by Supabase (JWTs). The frontend never handles raw passwords.
-- ** Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are in `.gitignore`.
+- **Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are in `.gitignore`.
 
 ---
 
-##  Roadmap
+## Roadmap
 
 - [ ] WhatsApp integration for service requests
 - [ ] Real payment gateway (Stripe / JazzCash)
@@ -536,7 +532,6 @@ The demo covers:
 - [ ] Replace pickle serialisation with JSON in LangGraph checkpoints
 - [ ] Multi-city support beyond Islamabad
 - [ ] Web dashboard for providers
-
 
 ---
 
