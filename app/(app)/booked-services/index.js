@@ -8,6 +8,7 @@ import { useSelector } from "react-redux";
 import { ArrowLeft, Clock, MapPin, Star, CheckCircle, Trash, User, Phone, Mail } from "lucide-react-native";
 import Modal from "react-native-modal";
 import { Button } from "../../../components/ui/Button";
+import MiniMap from "../../../components/MiniMap";
 
 export default function BookedServices() {
   const router = useRouter();
@@ -193,7 +194,7 @@ export default function BookedServices() {
             const cancelled = booking.status === 'cancelled';
             const upcoming = !completed && !cancelled;
             const canComplete = upcoming && isPast(booking.date, booking.time);
-            
+
             return (
               <View key={booking._id} className={`p-5 mb-4 rounded-3xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'} shadow-sm`}>
                 <View className="flex-row justify-between items-start mb-4">
@@ -209,8 +210,8 @@ export default function BookedServices() {
                         {completed ? 'Completed' : cancelled ? 'Cancelled' : 'Confirmed'}
                       </Text>
                     </View>
-                    <TouchableOpacity 
-                      onPress={() => handleDeleteBooking(booking._id)} 
+                    <TouchableOpacity
+                      onPress={() => handleDeleteBooking(booking._id)}
                       className={`w-8 h-8 rounded-full items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                     >
                       <Trash size={14} color="#ef4444" />
@@ -221,14 +222,14 @@ export default function BookedServices() {
                 {/* Details */}
                 <View className="border-t border-b py-3 my-2 border-slate-100 dark:border-slate-800">
                   <View className="flex-row items-center mb-3">
-                   <Clock size={16} color={isDark ? '#94a3b8' : '#64748b'} style={{ marginRight: 8 }} />
+                    <Clock size={16} color={isDark ? '#94a3b8' : '#64748b'} style={{ marginRight: 8 }} />
                     <Typography variant="small" className="opacity-80 font-semibold">
                       Scheduled: {booking.date || booking.requested_date} at {booking.time || booking.requested_time}
                     </Typography>
                   </View>
 
                   <Text className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 ml-0.5">Provider Details</Text>
-                  
+
                   <View className="flex-row items-center mb-3">
                     <View className="w-10 h-10 rounded-full bg-blue-500/10 items-center justify-center mr-3 border border-blue-500/20">
                       <User size={18} color="#3b82f6" />
@@ -249,39 +250,48 @@ export default function BookedServices() {
                   </View>
 
                   {(booking.provider_phone && booking.provider_phone !== 'Not provided') ||
- (booking.provider_location && booking.provider_location !== 'Not provided') ? (
-  <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
-    {booking.provider_phone && booking.provider_phone !== 'Not provided' && (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: (booking.provider_location && booking.provider_location !== 'Not provided') ? 6 : 0 }}>
-        <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} />
-        <Typography variant="small" className="opacity-80 text-xs font-semibold ml-2">
-          {booking.provider_phone}
-        </Typography>
-      </View>
-    )}
-    {booking.provider_location && booking.provider_location !== 'Not provided' && (
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} />
-        <Typography variant="small" className="opacity-80 text-xs font-semibold ml-2">
-          {booking.provider_location}
-        </Typography>
-      </View>
-    )}
-  </View>
-) : null}
+                    (booking.provider_location && booking.provider_location !== 'Not provided') ? (
+                    <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
+                      {booking.provider_phone && booking.provider_phone !== 'Not provided' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: (booking.provider_location && booking.provider_location !== 'Not provided') ? 6 : 0 }}>
+                          <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} />
+                          <Typography variant="small" className="opacity-80 text-xs font-semibold ml-2">
+                            {booking.provider_phone}
+                          </Typography>
+                        </View>
+                      )}
+                      {booking.provider_location && booking.provider_location !== 'Not provided' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} />
+                          <Typography variant="small" className="opacity-80 text-xs font-semibold ml-2">
+                            {booking.provider_location}
+                          </Typography>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+
+                  {booking.location_data?.latitude && (
+                    <MiniMap
+                      latitude={booking.location_data.latitude}
+                      longitude={booking.location_data.longitude}
+                      address={booking.location}
+                      height={120}
+                    />
+                  )}
                 </View>
 
                 {upcoming && (
                   <View className="flex-row justify-between items-center mt-4">
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       onPress={() => handleCancelBooking(booking)}
                       className="px-4 py-2.5 rounded-2xl bg-red-500/10 flex-row items-center"
                     >
-                     <Trash size={16} color="#ef4444" style={{ marginRight: 6 }} />
+                      <Trash size={16} color="#ef4444" style={{ marginRight: 6 }} />
                       <Text className="text-red-500 font-bold">Cancel Service</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       disabled={!canComplete}
                       onPress={() => setRatingModal({ open: true, bookingId: booking._id })}
                       className={`px-6 py-2.5 rounded-2xl flex-row items-center ${canComplete ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-800'}`}
@@ -306,7 +316,7 @@ export default function BookedServices() {
           <Typography variant="small" className="opacity-60 mb-6 text-center">
             How was the quality of service provided?
           </Typography>
-          
+
           <View className="flex-row justify-center mb-6">
             {[1, 2, 3, 4, 5].map(star => (
               <TouchableOpacity key={star} onPress={() => setRating(star)} className="p-2">
@@ -325,14 +335,14 @@ export default function BookedServices() {
           />
 
           <View className="flex-row justify-between">
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setRatingModal({ open: false, bookingId: null })}
               className={`w-[45%] py-4 rounded-2xl items-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
             >
               <Text className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Cancel</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               disabled={actionLoading}
               onPress={handleComplete}
               className={`w-[45%] py-4 rounded-2xl ${isDark ? 'bg-white' : 'bg-slate-900'} items-center justify-center`}
@@ -346,6 +356,6 @@ export default function BookedServices() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }

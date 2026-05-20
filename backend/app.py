@@ -40,6 +40,7 @@ from core.vector_store import vector_manager
 from models.conversation import ConversationModel
 from models.user import UserModel
 from models.provider import ProviderModel
+import googlemaps
 
 load_dotenv()
 
@@ -47,6 +48,15 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'flowtica-secret'
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', allow_upgrades=False)
+
+# Initialize Google Maps Client
+gmaps = None
+if os.getenv("GOOGLE_MAPS_API_KEY"):
+    try:
+        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY"))
+        print("[STARTUP DIAGNOSTIC] Google Maps Client initialized.")
+    except Exception as gmaps_err:
+        print(f"[STARTUP DIAGNOSTIC] WARNING: Google Maps initialization failed: {gmaps_err}")
 
 # Initialize Logger with SocketIO
 logger.socketio = socketio
@@ -576,6 +586,208 @@ def generate_gemini_token():
         }), 200
     except Exception as e:
         print(f"[GEMINI TOKEN ERROR] {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Location & Geocoding Endpoints
+# ---------------------------------------------------------------------------
+
+@app.route("/api/location/geocode", methods=["POST"])
+def geocode_address():
+    """Converts a street address to latitude/longitude coordinates."""
+    if not gmaps:
+        return jsonify({"success": False, "error": "Google Maps API not configured"}), 500
+    
+    data = request.json or {}
+    address = data.get("address")
+    if not address:
+        return jsonify({"success": False, "error": "Address is required"}), 400
+
+    try:
+        geocode_result = gmaps.geocode(address)
+        if not geocode_result:
+            return jsonify({"success": False, "error": "No results found for this address"}), 404
+        
+        result = geocode_result[0]
+        location = result['geometry']['location']
+        
+        # Extract city and country if possible
+        city = ""
+        country = ""
+        for component in result['address_components']:
+            if "locality" in component['types']:
+                city = component['long_name']
+            if "country" in component['types']:
+                country = component['long_name']
+
+        return jsonify({
+            "success": True,
+            "location_data": {
+                "address": result.get('formatted_address', address),
+                "city": city,
+                "country": country,
+                "latitude": location['lat'],
+                "longitude": location['lng']
+            }
+        }), 200
+    except Exception as e:
+        print(f"[GEOCODE ERROR] {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/location/reverse-geocode", methods=["POST"])
+def reverse_geocode():
+    """Converts latitude/longitude coordinates to a street address."""
+    if not gmaps:
+        return jsonify({"success": False, "error": "Google Maps API not configured"}), 500
+    
+    data = request.json or {}
+    lat = data.get("latitude")
+    lng = data.get("longitude")
+    
+    if lat is None or lng is None:
+        return jsonify({"success": False, "error": "Latitude and longitude are required"}), 400
+
+    try:
+        reverse_result = gmaps.reverse_geocode((lat, lng))
+        if not reverse_result:
+            return jsonify({"success": False, "error": "No results found for these coordinates"}), 404
+        
+        result = reverse_result[0]
+        
+        # Extract city and country
+        city = ""
+        country = ""
+        for component in result['address_components']:
+            if "locality" in component['types']:
+                city = component['long_name']
+            if "country" in component['types']:
+                country = component['long_name']
+
+        return jsonify({
+            "success": True,
+            "location_data": {
+                "address": result.get('formatted_address'),
+                "city": city,
+                "country": country,
+                "latitude": lat,
+                "longitude": lng
+            }
+        }), 200
+    except Exception as e:
+        print(f"[REVERSE GEOCODE ERROR] {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/location/autocomplete", methods=["POST"])
+def place_autocomplete():
+    """Provides location suggestions based on user input using Places API (New)."""
+    google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not google_api_key:
+        return jsonify({"success": False, "error": "Google Maps API Key not configured"}), 500
+    
+    try:
+        data = request.json or {}
+        input_text = data.get("input")
+        if not input_text:
+            return jsonify({"success": False, "error": "Input text is required"}), 400
+            
+        url = "https://places.googleapis.com/v1/places:autocomplete"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": google_api_key,
+        }
+        
+        # biasing to Pakistan (PK) for Flowtica
+        payload = {
+            "input": input_text,
+            "includedRegionCodes": ["pk"]
+        }
+        
+        import requests
+        resp = requests.post(url, headers=headers, json=payload)
+        resp_data = resp.json()
+        
+        if resp.status_code == 200:
+            # Map API (New) response format to expected frontend format
+            # API (New) returns 'suggestions' with 'placePrediction'
+            suggestions = resp_data.get("suggestions", [])
+            predictions = []
+            for s in suggestions:
+                p = s.get("placePrediction", {})
+                predictions.append({
+                    "description": p.get("text", {}).get("text"),
+                    "place_id": p.get("placeId")
+                })
+                
+            return jsonify({
+                "success": True,
+                "predictions": predictions
+            }), 200
+        else:
+            print(f"[AUTOCOMPLETE ERROR] Status: {resp.status_code}, Body: {resp.text}")
+            return jsonify({"success": False, "error": resp_data.get("error", {}).get("message", "API Error")}), resp.status_code
+            
+    except Exception as e:
+        print(f"[AUTOCOMPLETE ERROR] {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/location/details", methods=["POST"])
+def place_details():
+    """Fetches full coordinates and formatted address using Places API (New)."""
+    google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not google_api_key:
+        return jsonify({"success": False, "error": "Google Maps API Key not configured"}), 500
+        
+    try:
+        data = request.json or {}
+        place_id = data.get("place_id")
+        if not place_id:
+            return jsonify({"success": False, "error": "Place ID is required"}), 400
+            
+        url = f"https://places.googleapis.com/v1/places/{place_id}"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": google_api_key,
+            "X-Goog-FieldMask": "id,location,formattedAddress,addressComponents"
+        }
+        
+        import requests
+        resp = requests.get(url, headers=headers)
+        resp_data = resp.json()
+        
+        if resp.status_code == 200:
+            lat = resp_data.get("location", {}).get("latitude")
+            lng = resp_data.get("location", {}).get("longitude")
+            address = resp_data.get("formattedAddress")
+            
+            city = ""
+            country = ""
+            # Extract city/country from addressComponents (New format)
+            for component in resp_data.get("addressComponents", []):
+                types = component.get("types", [])
+                if "locality" in types:
+                    city = component.get("longText")
+                if "country" in types:
+                    country = component.get("longText")
+
+            location_data = {
+                "address": address,
+                "city": city,
+                "country": country,
+                "latitude": lat,
+                "longitude": lng
+            }
+            
+            return jsonify({
+                "success": True,
+                "location_data": location_data
+            }), 200
+        else:
+            print(f"[PLACE DETAILS ERROR] Status: {resp.status_code}, Body: {resp.text}")
+            return jsonify({"success": False, "error": resp_data.get("error", {}).get("message", "API Error")}), resp.status_code
+            
+    except Exception as e:
+        print(f"[PLACE DETAILS ERROR] {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

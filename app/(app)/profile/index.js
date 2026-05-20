@@ -5,7 +5,10 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../../components/AuthContext";
 import { Typography } from "../../../components/ui/Typography";
 import { useSelector } from "react-redux";
-import { ArrowLeft, User, Phone, MapPin, Mail, Save } from "lucide-react-native";
+import { ArrowLeft, User, Phone, MapPin, Mail, Save, Map as MapIcon, Navigation } from "lucide-react-native";
+import { LocationService } from "../../../services/location";
+import LocationPickerModal from "../../../components/LocationPickerModal";
+import MiniMap from "../../../components/MiniMap";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -21,10 +24,12 @@ export default function ProfileScreen() {
     name: "",
     phone: "",
     location: "",
+    location_data: null,
     avatar_url: "",
     email: "",
     user_type: "buyer"
   });
+  const [showMap, setShowMap] = useState(false);
 
   const fetchProfile = async () => {
     if (!user?.id) return;
@@ -41,6 +46,7 @@ export default function ProfileScreen() {
           name: data.user.name || "",
           phone: data.user.phone || "",
           location: data.user.location || "",
+          location_data: data.user.location_data || null,
           avatar_url: data.user.avatar_url || "",
           email: data.user.email || user.email || "",
           user_type: data.user.user_type || "buyer"
@@ -203,8 +209,36 @@ export default function ProfileScreen() {
                 <View style={{ position: 'absolute', left: 16, top: 18 }}>
                   <MapPin size={18} color="#64748b" />
                 </View>
+                <TouchableOpacity
+                  onPress={() => setShowMap(true)}
+                  style={{ position: 'absolute', right: 16, top: 18 }}
+                >
+                  <MapIcon size={18} color="#2563eb" />
+                </TouchableOpacity>
               </View>
+
+              {profile.location_data?.latitude && (
+                <MiniMap
+                  latitude={profile.location_data.latitude}
+                  longitude={profile.location_data.longitude}
+                  address={profile.location}
+                  height={120}
+                />
+              )}
             </View>
+
+            <LocationPickerModal
+              visible={showMap}
+              onClose={() => setShowMap(false)}
+              initialLocation={profile.location_data}
+              onConfirm={(data) => {
+                setProfile({
+                  ...profile,
+                  location: data.address,
+                  location_data: data
+                });
+              }}
+            />
 
             {/* Email (read-only) */}
             <View style={{ marginBottom: 24, opacity: 0.6 }}>

@@ -6,6 +6,7 @@ import { useAuth } from "../../../components/AuthContext";
 import { Typography } from "../../../components/ui/Typography";
 import { useSelector } from "react-redux";
 import { ArrowLeft, Clock, MapPin, CheckCircle, XCircle, DollarSign, Briefcase, Star, Trash, User, Phone, Mail } from "lucide-react-native";
+import MiniMap from "../../../components/MiniMap";
 
 export default function BookedJobs() {
   const router = useRouter();
@@ -282,8 +283,8 @@ export default function BookedJobs() {
                         {completed ? 'Completed' : cancelled ? 'Cancelled' : 'Confirmed'}
                       </Text>
                     </View>
-                    <TouchableOpacity 
-                      onPress={() => handleDeleteBooking(booking._id)} 
+                    <TouchableOpacity
+                      onPress={() => handleDeleteBooking(booking._id)}
                       className={`w-8 h-8 rounded-full items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                     >
                       <Trash size={14} color="#ef4444" />
@@ -320,29 +321,37 @@ export default function BookedJobs() {
                     </View>
                   </View>
 
-                 
-                    {(booking.customer_phone && booking.customer_phone !== 'Not provided') ||
-                      (booking.customer_location && booking.customer_location !== 'Not provided') ? (
-                      <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
-                        {booking.customer_phone && booking.customer_phone !== 'Not provided' && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: (booking.customer_location && booking.customer_location !== 'Not provided') ? 6 : 0 }}>
-                            <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} />
-                            <Typography variant="small" className="opacity-80 ml-2 text-xs font-semibold">
-                              {booking.customer_phone}
-                            </Typography>
-                          </View>
-                        )}
-                        {booking.customer_location && booking.customer_location !== 'Not provided' && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} />
-                            <Typography variant="small" className="opacity-80 ml-2 text-xs font-semibold">
-                              {booking.customer_location}
-                            </Typography>
-                          </View>
-                        )}
-                      </View>
-                    ) : null}
-                 
+
+                  {(booking.customer_phone && booking.customer_phone !== 'Not provided') ||
+                    (booking.customer_location && booking.customer_location !== 'Not provided') ? (
+                    <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
+                      {booking.customer_phone && booking.customer_phone !== 'Not provided' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: (booking.customer_location && booking.customer_location !== 'Not provided') ? 6 : 0 }}>
+                          <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} />
+                          <Typography variant="small" className="opacity-80 ml-2 text-xs font-semibold">
+                            {booking.customer_phone}
+                          </Typography>
+                        </View>
+                      )}
+                      {booking.customer_location && booking.customer_location !== 'Not provided' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} />
+                          <Typography variant="small" className="opacity-80 ml-2 text-xs font-semibold">
+                            {booking.customer_location}
+                          </Typography>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+
+                  {booking.location_data?.latitude && (
+                    <MiniMap
+                      latitude={booking.location_data.latitude}
+                      longitude={booking.location_data.longitude}
+                      address={booking.location}
+                      height={120}
+                    />
+                  )}
                 </View>
 
                 {upcoming && (
@@ -368,10 +377,10 @@ export default function BookedJobs() {
             );
           })
         )}
-      </ScrollView>
+      </ScrollView >
 
       {/* Modal */}
-      <Modal visible={completeModalOpen} animationType="slide" transparent={true}>
+      < Modal visible={completeModalOpen} animationType="slide" transparent={true} >
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
           <View style={{ padding: 24, borderTopLeftRadius: 40, borderTopRightRadius: 40, borderTopWidth: 1, borderColor: isDark ? '#1e293b' : '#f1f5f9', backgroundColor: isDark ? '#0f172a' : '#ffffff', minHeight: 450 }}>
             <View style={{ width: 48, height: 6, borderRadius: 3, backgroundColor: isDark ? '#334155' : '#e2e8f0', alignSelf: 'center', marginBottom: 24 }} />
@@ -438,7 +447,7 @@ export default function BookedJobs() {
             </View>
           </View>
         </View>
-      </Modal>
-    </View>
+      </Modal >
+    </View >
   );
 }

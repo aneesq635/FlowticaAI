@@ -12,6 +12,9 @@ class BookingModel:
             "provider_id": provider.get("id"),
             "provider_name": provider.get("name"),
             "service_category": provider.get("category"),
+            "location": service_details.get("location"), # Original backward compatibility field
+            "location_data": service_details.get("location_data"), # Structured snapshot
+            "provider_location_data": provider.get("location_data"), # Provider's snapshot
             "status": "confirmed",
             "price": service_details.get("price"),
             "scheduled_time": service_details.get("scheduled_time"),

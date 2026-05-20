@@ -1,34 +1,36 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  Switch, 
-  TextInput, 
-  Alert, 
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
+  TextInput,
+  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   FlatList
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import MiniMap from '../../../components/MiniMap';
 import { useSelector, useDispatch } from 'react-redux';
 import { setProviderProfile } from '../../../store/orchestrationSlice';
-import { 
-  ArrowLeft, 
-  UserCircle, 
-  Briefcase, 
-  Star, 
-  Clock, 
-  Plus, 
-  X, 
-  Settings, 
-  MapPin, 
-  DollarSign, 
-  Award, 
-  Globe, 
+import {
+  ArrowLeft,
+  UserCircle,
+  Briefcase,
+  Star,
+  Clock,
+  Plus,
+  X,
+  Settings,
+  MapPin,
+  DollarSign,
+  Award,
+  Globe,
   Wrench,
   Trash2,
   Edit2,
@@ -224,7 +226,7 @@ export default function ProviderDashboard() {
   const [counterDate, setCounterDate] = useState('');
   const [counterTime, setCounterTime] = useState('');
   const [counterNote, setCounterNote] = useState('');
-    const isDark = useSelector(state => state.orchestration.theme) === 'dark';
+  const isDark = useSelector(state => state.orchestration.theme) === 'dark';
 
   const { control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm({
     defaultValues: {
@@ -323,9 +325,9 @@ export default function ProviderDashboard() {
       "Are you sure you want to delete this request record?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
+        {
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               const res = await fetch(`${backendUrl}/api/providers/requests/${req._id}`, {
@@ -371,7 +373,7 @@ export default function ProviderDashboard() {
   useEffect(() => {
     if (user?.id) {
       fetchProfileData();
-      
+
       // Setup real-time Socket.IO listener
       const socket = socketService.socket;
       if (socket) {
@@ -421,7 +423,7 @@ export default function ProviderDashboard() {
   const toggleAvailability = async () => {
     const newStatus = !isAvailable;
     setIsAvailable(newStatus);
-    
+
     try {
       const response = await fetch(`${backendUrl}/api/providers/availability`, {
         method: 'POST',
@@ -431,7 +433,7 @@ export default function ProviderDashboard() {
           availability: newStatus
         })
       });
-      
+
       const data = await response.json();
       if (!data.success) {
         // Rollback on failure
@@ -449,7 +451,7 @@ export default function ProviderDashboard() {
       Alert.alert("Error", "Backend unreachable.");
     }
   };
-  
+
   const onFormError = (errors) => {
     console.warn("[FORM ERROR] Validation failed:", errors);
     const errorFields = Object.keys(errors).map(key => {
@@ -457,7 +459,7 @@ export default function ProviderDashboard() {
       return fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
     });
     Alert.alert(
-      "Validation Required", 
+      "Validation Required",
       `Please fill in the following fields correctly:\n\n• ${errorFields.join('\n• ')}`
     );
   };
@@ -542,9 +544,9 @@ export default function ProviderDashboard() {
       "Are you sure you want to permanently delete this service listing from the marketplace?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete Listing", 
-          style: "destructive", 
+        {
+          text: "Delete Listing",
+          style: "destructive",
           onPress: async () => {
             try {
               const res = await fetch(`${backendUrl}/api/providers/services/${serviceId}`, {
@@ -597,479 +599,405 @@ export default function ProviderDashboard() {
   };
 
   if (isLoading) {
-  return (
-    <View className={`flex-1 justify-center items-center ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
-      <ActivityIndicator size="large" color={isDark ? '#f1f5f9' : '#000'} />
-    </View>
-  );
-}
+    return (
+      <View className={`flex-1 justify-center items-center ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
+        <ActivityIndicator size="large" color={isDark ? '#f1f5f9' : '#000'} />
+      </View>
+    );
+  }
 
   // --- Onboarding Setup ---
- if (!hasProfile) {
-  return (
-    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`} edges={['bottom']}>
-      <ScrollView className="flex-1 px-6 pt-10">
-        <View className="items-center mb-8">
-          <View className={`w-20 h-20 rounded-full items-center justify-center mb-4 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-            <UserCircle size={40} color={isDark ? '#f1f5f9' : '#000'} />
-          </View>
-          <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Setup Provider Profile
-          </Text>
-          <Text className={`text-center mt-2 px-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            Welcome to Flowtica! Tell us about your business to get started.
-          </Text>
-        </View>
-
-        <View className="space-y-4">
-          <View>
-            <Text className={`text-xs font-bold uppercase mb-1 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Business Name
-            </Text>
-            <Controller
-              control={control}
-              name="name"
-              rules={{ required: true }}
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                  placeholder="e.g. Ali AC Experts"
-                  placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                  value={value}
-                  onChangeText={onChange}
-                />
-              )}
-            />
-          </View>
-
-          <View>
-            <Text className={`text-xs font-bold uppercase mb-1 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Main Service Category
-            </Text>
-            <Controller
-              control={control}
-              name="main_service"
-              rules={{ required: true }}
-              render={({ field: { onChange, value } }) => (
-                <Dropdown
-                  style={{
-                    backgroundColor: isDark ? '#1e293b' : '#f8fafc',
-                    borderRadius: 16,
-                    padding: 14,
-                    borderWidth: 1,
-                    borderColor: isDark ? '#334155' : '#f1f5f9',
-                  }}
-                  containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
-                  itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 14 }}
-                  activeColor={isDark ? '#334155' : '#f1f5f9'}
-                  placeholderStyle={{ fontSize: 14, color: isDark ? '#475569' : '#94a3b8' }}
-                  selectedTextStyle={{ fontSize: 14, fontWeight: '600', color: isDark ? '#f1f5f9' : '#0f172a' }}
-                  data={SERVICE_CATEGORIES}
-                  labelField="label"
-                  valueField="value"
-                  placeholder="Select primary service"
-                  value={value}
-                  onChange={item => onChange(item.value)}
-                />
-              )}
-            />
-          </View>
-
-          <Button
-            title={isSubmitting ? "Setting up..." : "Launch Dashboard"}
-            onPress={handleSubmit(onSetupProfile)}
-            disabled={isSubmitting}
-            className="mt-6 py-4 rounded-2xl bg-black"
-          />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-  return (
-  <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}`} edges={['bottom']}>
-    <ScrollView
-      className="flex-1 px-5 pt-4"
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Profile Header Card */}
-      <Card className={`mb-6 p-6 border-0 shadow-sm rounded-3xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-        <View className="flex-row justify-between items-center mb-6">
-          <View className="flex-row items-center">
-            <View className={`w-14 h-14 rounded-2xl items-center justify-center mr-4 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-              <Text className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {profile?.name?.charAt(0)}
-              </Text>
+  if (!hasProfile) {
+    return (
+      <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`} edges={['bottom']}>
+        <ScrollView className="flex-1 px-6 pt-10">
+          <View className="items-center mb-8">
+            <View className={`w-20 h-20 rounded-full items-center justify-center mb-4 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+              <UserCircle size={40} color={isDark ? '#f1f5f9' : '#000'} />
             </View>
+            <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              Setup Provider Profile
+            </Text>
+            <Text className={`text-center mt-2 px-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Welcome to Flowtica! Tell us about your business to get started.
+            </Text>
+          </View>
+
+          <View className="space-y-4">
             <View>
-              <Text className={`text-xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{profile?.name}</Text>
-              <Text className={`font-bold text-xs uppercase tracking-tight ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {profile?.main_service}
+              <Text className={`text-xs font-bold uppercase mb-1 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Business Name
               </Text>
+              <Controller
+                control={control}
+                name="name"
+                rules={{ required: true }}
+                render={({ field: { onChange, value } }) => (
+                  <TextInput
+                    className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                    placeholder="e.g. Ali AC Experts"
+                    placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                    value={value}
+                    onChangeText={onChange}
+                  />
+                )}
+              />
+            </View>
+
+            <View>
+              <Text className={`text-xs font-bold uppercase mb-1 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Main Service Category
+              </Text>
+              <Controller
+                control={control}
+                name="main_service"
+                rules={{ required: true }}
+                render={({ field: { onChange, value } }) => (
+                  <Dropdown
+                    style={{
+                      backgroundColor: isDark ? '#1e293b' : '#f8fafc',
+                      borderRadius: 16,
+                      padding: 14,
+                      borderWidth: 1,
+                      borderColor: isDark ? '#334155' : '#f1f5f9',
+                    }}
+                    containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
+                    itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 14 }}
+                    activeColor={isDark ? '#334155' : '#f1f5f9'}
+                    placeholderStyle={{ fontSize: 14, color: isDark ? '#475569' : '#94a3b8' }}
+                    selectedTextStyle={{ fontSize: 14, fontWeight: '600', color: isDark ? '#f1f5f9' : '#0f172a' }}
+                    data={SERVICE_CATEGORIES}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Select primary service"
+                    value={value}
+                    onChange={item => onChange(item.value)}
+                  />
+                )}
+              />
+            </View>
+
+            <Button
+              title={isSubmitting ? "Setting up..." : "Launch Dashboard"}
+              onPress={handleSubmit(onSetupProfile)}
+              disabled={isSubmitting}
+              className="mt-6 py-4 rounded-2xl bg-black"
+            />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+  return (
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-[#0f172a]' : 'bg-slate-50'}`} edges={['bottom']}>
+      <ScrollView
+        className="flex-1 px-5 pt-4"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Header Card */}
+        <Card className={`mb-6 p-6 border-0 shadow-sm rounded-3xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+          <View className="flex-row justify-between items-center mb-6">
+            <View className="flex-row items-center">
+              <View className={`w-14 h-14 rounded-2xl items-center justify-center mr-4 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                <Text className={`text-xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  {profile?.name?.charAt(0)}
+                </Text>
+              </View>
+              <View>
+                <Text className={`text-xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{profile?.name}</Text>
+                <Text className={`font-bold text-xs uppercase tracking-tight ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {profile?.main_service}
+                </Text>
+              </View>
+            </View>
+            <View className={`flex-row items-center px-2 py-1 rounded-lg border ${isDark ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-yellow-50 border-yellow-100'}`}>
+              <Star size={12} color="#eab308" fill="#eab308" />
+              <Text className="text-yellow-500 font-black text-xs ml-1">{profile?.rating || "5.0"}</Text>
             </View>
           </View>
-          <View className={`flex-row items-center px-2 py-1 rounded-lg border ${isDark ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-yellow-50 border-yellow-100'}`}>
-            <Star size={12} color="#eab308" fill="#eab308" />
-            <Text className="text-yellow-500 font-black text-xs ml-1">{profile?.rating || "5.0"}</Text>
-          </View>
-        </View>
 
-        {/* Metrics Grid */}
-        <View className={`mb-6 pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100/80'}`}>
-          <Text className={`text-[10px] font-extrabold uppercase tracking-widest mb-3 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-            Business Metrics & Dynamic Insights
-          </Text>
-          <View className="flex-row justify-between mb-4">
-            <StatItem label="Total Jobs" value={profile?.total_jobs ?? 0} icon={Briefcase} />
-            <StatItem label="Completed" value={profile?.completed_jobs ?? 0} icon={Award} />
-            <StatItem label="Active Req" value={profile?.active_requests ?? 0} icon={Layout} />
-          </View>
-          <View className="flex-row justify-between">
-            <StatItem label="Earnings" value={`${profile?.total_earnings ?? 0} PKR`} icon={DollarSign} />
-            <StatItem label="Hours" value={`${profile?.total_hours_worked ?? 0} hrs`} icon={Clock} />
-            <StatItem label="Live Rating" value={profile?.rating || "5.0"} icon={Star} />
-          </View>
-        </View>
-
-        {/* Availability Toggle */}
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center">
-            <View className={`w-2 h-2 rounded-full mr-2 ${isAvailable ? 'bg-green-500' : 'bg-slate-400'}`} />
-            <Text className={`font-black text-xs uppercase tracking-tighter ${isAvailable ? 'text-green-500' : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
-              {isAvailable ? 'Accepting Orders' : 'Offline'}
+          {/* Metrics Grid */}
+          <View className={`mb-6 pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100/80'}`}>
+            <Text className={`text-[10px] font-extrabold uppercase tracking-widest mb-3 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              Business Metrics & Dynamic Insights
             </Text>
+            <View className="flex-row justify-between mb-4">
+              <StatItem label="Total Jobs" value={profile?.total_jobs ?? 0} icon={Briefcase} />
+              <StatItem label="Completed" value={profile?.completed_jobs ?? 0} icon={Award} />
+              <StatItem label="Active Req" value={profile?.active_requests ?? 0} icon={Layout} />
+            </View>
+            <View className="flex-row justify-between">
+              <StatItem label="Earnings" value={`${profile?.total_earnings ?? 0} PKR`} icon={DollarSign} />
+              <StatItem label="Hours" value={`${profile?.total_hours_worked ?? 0} hrs`} icon={Clock} />
+              <StatItem label="Live Rating" value={profile?.rating || "5.0"} icon={Star} />
+            </View>
           </View>
-          <Switch
-            value={isAvailable}
-            onValueChange={toggleAvailability}
-            trackColor={{ false: isDark ? '#334155' : '#e2e8f0', true: isDark ? '#f1f5f9' : '#000' }}
-            thumbColor={isDark ? '#0f172a' : '#fff'}
-          />
-        </View>
-      </Card>
 
-      {/* Incoming Requests */}
-      <View className="mb-6">
-        <View className="flex-row justify-between items-center mb-4">
-          <View>
-            <Text className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Incoming Requests</Text>
-            <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-              Assigned by AI Orchestrator
-            </Text>
-          </View>
-          {requests.length > 0 && (
-            <View className="bg-red-500 px-2 py-0.5 rounded-full">
-              <Text className="text-white text-[10px] font-black">
-                {requests.filter(r => r.status === 'pending').length} Active
+          {/* Availability Toggle */}
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <View className={`w-2 h-2 rounded-full mr-2 ${isAvailable ? 'bg-green-500' : 'bg-slate-400'}`} />
+              <Text className={`font-black text-xs uppercase tracking-tighter ${isAvailable ? 'text-green-500' : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
+                {isAvailable ? 'Accepting Orders' : 'Offline'}
               </Text>
+            </View>
+            <Switch
+              value={isAvailable}
+              onValueChange={toggleAvailability}
+              trackColor={{ false: isDark ? '#334155' : '#e2e8f0', true: isDark ? '#f1f5f9' : '#000' }}
+              thumbColor={isDark ? '#0f172a' : '#fff'}
+            />
+          </View>
+        </Card>
+
+        {/* Incoming Requests */}
+        <View className="mb-6">
+          <View className="flex-row justify-between items-center mb-4">
+            <View>
+              <Text className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Incoming Requests</Text>
+              <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                Assigned by AI Orchestrator
+              </Text>
+            </View>
+            {requests.length > 0 && (
+              <View className="bg-red-500 px-2 py-0.5 rounded-full">
+                <Text className="text-white text-[10px] font-black">
+                  {requests.filter(r => r.status === 'pending').length} Active
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {requests.length === 0 ? (
+            <Card className={`p-6 rounded-3xl border-0 shadow-sm items-center justify-center py-8 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+              <Text className={`font-bold text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                No incoming service requests.
+              </Text>
+            </Card>
+          ) : (
+            <View>
+              {requests.map((req, idx) => {
+                const getStatusColor = (status) => {
+                  switch (status) {
+                    case 'approved': return isDark ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-green-50 text-green-700 border-green-100';
+                    case 'denied': return isDark ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-red-50 text-red-700 border-red-100';
+                    case 'counter_offer': return isDark ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-orange-50 text-orange-700 border-orange-100';
+                    default: return isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-50 text-slate-700 border-slate-200';
+                  }
+                };
+
+                return (
+                  <Card key={req._id || idx} className={`mb-4 p-5 border-0 shadow-sm rounded-3xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+                    <View className="flex-row justify-between items-start mb-3">
+                      <View className="flex-1 mr-2 flex-row items-center">
+                        <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                          <User size={18} color={isDark ? '#94a3b8' : '#64748b'} />
+                        </View>
+                        <View className="flex-1">
+                          <Text className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {req.customer_name || 'Valued Client'}
+                          </Text>
+                          <Text className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {req.customer_email || req.contact_email || 'No email provided'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View className="flex-row items-center space-x-2">
+                        <View className={`px-3 py-1 rounded-full border ${getStatusColor(req.status)}`}>
+                          <Text className="text-[9px] font-black uppercase tracking-tight">{req.status}</Text>
+                        </View>
+                        {(req.status === 'approved' || req.status === 'denied') && (
+                          <TouchableOpacity
+                            onPress={() => handleDeleteRequest(req)}
+                            className={`p-1.5 rounded-full ${req.status === 'approved' && !isRequestTimePassed(req) ? (isDark ? 'bg-slate-800 opacity-40' : 'bg-slate-100 opacity-40') : 'bg-red-500/10'}`}
+                          >
+                            <Trash2 size={12} color={req.status === 'approved' && !isRequestTimePassed(req) ? '#64748b' : '#ef4444'} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    <View className={`space-y-2 py-3 border-y mb-4 ${isDark ? 'border-slate-800' : 'border-slate-50'}`}>
+                      <View className={`mb-2 p-3 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
+                        <Text className={`text-[9px] font-bold uppercase mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Service Requested</Text>
+                        <Text className={`text-xs font-black ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                          {req.service_type} ({req.specialization})
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <MapPin size={12} color="#64748b" />
+                        <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{req.location}</Text>
+                      </View>
+
+                      {/* In the request card, replace the location_data block: */}
+                      {/* REPLACE this in your requests.map() in ProviderDashboard: */}
+                      {req.location_data && (
+                        <MiniMap
+                          latitude={req.location_data.latitude}
+                          longitude={req.location_data.longitude}
+                          address={req.location_data.address}
+                          height={130}
+                        />
+                      )}
+                      <View className="flex-row items-center">
+                        <DollarSign size={12} color="#64748b" />
+                        <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Offered Rate: {req.offered_price} PKR/USD
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <Clock size={12} color="#64748b" />
+                        <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Time Requested: {req.requested_date} at {req.requested_time}
+                        </Text>
+                      </View>
+                      {(req.customer_phone || req.contact_phone) &&
+                        (req.customer_phone !== 'Not provided' || req.contact_phone !== 'Not provided') && (
+                          <View className={`mt-2 pt-2 border-t border-dashed ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+                            <Text className={`text-[9px] font-bold uppercase mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Client Contact</Text>
+                            <Text className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                              📞 {req.customer_phone && req.customer_phone !== 'Not provided' ? req.customer_phone : req.contact_phone}
+                            </Text>
+                          </View>
+                        )}
+                      {req.status === 'counter_offer' && (
+                        <View className={`mt-2 p-3 rounded-2xl border ${isDark ? 'bg-orange-500/5 border-orange-500/20' : 'bg-orange-50/50 border-orange-100/50'}`}>
+                          <Text className={`text-[9px] font-black uppercase mb-1 ${isDark ? 'text-orange-400' : 'text-orange-700'}`}>Counter Offer Sent</Text>
+                          <Text className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Price: {req.counter_price} PKR/USD</Text>
+                          <Text className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Time: {req.counter_date} at {req.counter_time}</Text>
+                          {req.counter_note && (
+                            <Text className={`text-xs italic mt-1 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              Note: "{req.counter_note}"
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+
+                    {(req.status === 'pending' || req.status === 'counter_offer') && (
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <TouchableOpacity
+                          onPress={() => handleRequestResponse(req._id, 'approved')}
+                          className="flex-1 bg-green-500 py-3 rounded-2xl items-center justify-center"
+                        >
+                          <Text className="text-white font-black text-xs">Approve</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedRequest(req);
+                            setCounterPrice(String(req.offered_price || ''));
+                            setCounterDate(req.requested_date || '');
+                            setCounterTime(req.requested_time || '');
+                            setCounterNote('');
+                            setIsCounterModalOpen(true);
+                          }}
+                          className={`flex-1 py-3 rounded-2xl items-center justify-center ${isDark ? 'bg-slate-700' : 'bg-slate-900'}`}
+                        >
+                          <Text className="text-white font-black text-xs">Counter</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleRequestResponse(req._id, 'denied')}
+                          className="flex-1 bg-red-500/10 py-3 rounded-2xl items-center justify-center"
+                        >
+                          <Text className="text-red-500 font-black text-xs">Deny</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </Card>
+                );
+              })}
             </View>
           )}
         </View>
 
-        {requests.length === 0 ? (
-          <Card className={`p-6 rounded-3xl border-0 shadow-sm items-center justify-center py-8 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-            <Text className={`font-bold text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-              No incoming service requests.
-            </Text>
-          </Card>
-        ) : (
+        {/* Portfolio Header */}
+        <View className="flex-row justify-between items-center mb-4">
           <View>
-            {requests.map((req, idx) => {
-              const getStatusColor = (status) => {
-                switch (status) {
-                  case 'approved': return isDark ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-green-50 text-green-700 border-green-100';
-                  case 'denied': return isDark ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-red-50 text-red-700 border-red-100';
-                  case 'counter_offer': return isDark ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-orange-50 text-orange-700 border-orange-100';
-                  default: return isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-50 text-slate-700 border-slate-200';
-                }
-              };
+            <Text className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Portfolio</Text>
+            <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Active Listings</Text>
+          </View>
+          {/* ✅ Add New button — nowrap so text stays one line */}
+          <TouchableOpacity
+            onPress={() => {
+              setEditingServiceId(null);
+              reset({ name: '', service_type: '', specialization: '', description: '', location: '', hourly_rate: '', currency: 'PKR', experience_years: '', languages: [], phone: '', email: user?.email || '' });
+              setTools([]);
+              setIsCreatingService(true);
+            }}
+            className={`flex-row items-center px-4 py-2 rounded-2xl shadow-lg ${isDark ? 'bg-slate-100' : 'bg-black'}`}
+            style={{ flexShrink: 0 }}
+          >
+            <Plus size={16} color={isDark ? '#0f172a' : '#fff'} strokeWidth={3} />
+            <Text
+              className={`font-black ml-1.5 text-xs ${isDark ? 'text-slate-900' : 'text-white'}`}
+              numberOfLines={1}
+            >
+              Add New
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-              return (
-                <Card key={req._id || idx} className={`mb-4 p-5 border-0 shadow-sm rounded-3xl ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-                  <View className="flex-row justify-between items-start mb-3">
-                    <View className="flex-1 mr-2 flex-row items-center">
-                      <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-                        <User size={18} color={isDark ? '#94a3b8' : '#64748b'} />
-                      </View>
-                      <View className="flex-1">
-                        <Text className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {req.customer_name || 'Valued Client'}
-                        </Text>
-                        <Text className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {req.customer_email || req.contact_email || 'No email provided'}
-                        </Text>
-                      </View>
-                    </View>
-                    <View className="flex-row items-center space-x-2">
-                      <View className={`px-3 py-1 rounded-full border ${getStatusColor(req.status)}`}>
-                        <Text className="text-[9px] font-black uppercase tracking-tight">{req.status}</Text>
-                      </View>
-                      {(req.status === 'approved' || req.status === 'denied') && (
-                        <TouchableOpacity
-                          onPress={() => handleDeleteRequest(req)}
-                          className={`p-1.5 rounded-full ${req.status === 'approved' && !isRequestTimePassed(req) ? (isDark ? 'bg-slate-800 opacity-40' : 'bg-slate-100 opacity-40') : 'bg-red-500/10'}`}
-                        >
-                          <Trash2 size={12} color={req.status === 'approved' && !isRequestTimePassed(req) ? '#64748b' : '#ef4444'} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-
-                  <View className={`space-y-2 py-3 border-y mb-4 ${isDark ? 'border-slate-800' : 'border-slate-50'}`}>
-                    <View className={`mb-2 p-3 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
-                      <Text className={`text-[9px] font-bold uppercase mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Service Requested</Text>
-                      <Text className={`text-xs font-black ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                        {req.service_type} ({req.specialization})
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <MapPin size={12} color="#64748b" />
-                      <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{req.location}</Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <DollarSign size={12} color="#64748b" />
-                      <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Offered Rate: {req.offered_price} PKR/USD
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <Clock size={12} color="#64748b" />
-                      <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Time Requested: {req.requested_date} at {req.requested_time}
-                      </Text>
-                    </View>
-                    {(req.customer_phone || req.contact_phone) &&
-                      (req.customer_phone !== 'Not provided' || req.contact_phone !== 'Not provided') && (
-                        <View className={`mt-2 pt-2 border-t border-dashed ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
-                          <Text className={`text-[9px] font-bold uppercase mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Client Contact</Text>
-                          <Text className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                            📞 {req.customer_phone && req.customer_phone !== 'Not provided' ? req.customer_phone : req.contact_phone}
-                          </Text>
-                        </View>
-                      )}
-                    {req.status === 'counter_offer' && (
-                      <View className={`mt-2 p-3 rounded-2xl border ${isDark ? 'bg-orange-500/5 border-orange-500/20' : 'bg-orange-50/50 border-orange-100/50'}`}>
-                        <Text className={`text-[9px] font-black uppercase mb-1 ${isDark ? 'text-orange-400' : 'text-orange-700'}`}>Counter Offer Sent</Text>
-                        <Text className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Price: {req.counter_price} PKR/USD</Text>
-                        <Text className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Time: {req.counter_date} at {req.counter_time}</Text>
-                        {req.counter_note && (
-                          <Text className={`text-xs italic mt-1 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            Note: "{req.counter_note}"
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-
-                  {(req.status === 'pending' || req.status === 'counter_offer') && (
-                    <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <TouchableOpacity
-                        onPress={() => handleRequestResponse(req._id, 'approved')}
-                        className="flex-1 bg-green-500 py-3 rounded-2xl items-center justify-center"
-                      >
-                        <Text className="text-white font-black text-xs">Approve</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setSelectedRequest(req);
-                          setCounterPrice(String(req.offered_price || ''));
-                          setCounterDate(req.requested_date || '');
-                          setCounterTime(req.requested_time || '');
-                          setCounterNote('');
-                          setIsCounterModalOpen(true);
-                        }}
-                        className={`flex-1 py-3 rounded-2xl items-center justify-center ${isDark ? 'bg-slate-700' : 'bg-slate-900'}`}
-                      >
-                        <Text className="text-white font-black text-xs">Counter</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleRequestResponse(req._id, 'denied')}
-                        className="flex-1 bg-red-500/10 py-3 rounded-2xl items-center justify-center"
-                      >
-                        <Text className="text-red-500 font-black text-xs">Deny</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </Card>
-              );
-            })}
+        {/* Services List */}
+        {services.length === 0 ? (
+          <View className={`items-center py-10 rounded-3xl border border-dashed mb-6 ${isDark ? 'border-slate-700 bg-slate-900/50' : 'border-slate-200 bg-white'}`}>
+            <Text className={`font-bold text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>No services listed yet.</Text>
+          </View>
+        ) : (
+          <View className="mb-6">
+            {services.map((svc, index) => (
+              <ServiceCard
+                key={index}
+                service={svc}
+                onEdit={() => handleEditServicePress(svc)}
+                onDelete={() => onDeleteService(svc._id)}
+              />
+            ))}
           </View>
         )}
-      </View>
+      </ScrollView>
 
-      {/* Portfolio Header */}
-      <View className="flex-row justify-between items-center mb-4">
-        <View>
-          <Text className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Portfolio</Text>
-          <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>Active Listings</Text>
-        </View>
-        {/* ✅ Add New button — nowrap so text stays one line */}
-        <TouchableOpacity
-          onPress={() => {
-            setEditingServiceId(null);
-            reset({ name: '', service_type: '', specialization: '', description: '', location: '', hourly_rate: '', currency: 'PKR', experience_years: '', languages: [], phone: '', email: user?.email || '' });
-            setTools([]);
-            setIsCreatingService(true);
-          }}
-          className={`flex-row items-center px-4 py-2 rounded-2xl shadow-lg ${isDark ? 'bg-slate-100' : 'bg-black'}`}
-          style={{ flexShrink: 0 }}
-        >
-          <Plus size={16} color={isDark ? '#0f172a' : '#fff'} strokeWidth={3} />
-          <Text
-            className={`font-black ml-1.5 text-xs ${isDark ? 'text-slate-900' : 'text-white'}`}
-            numberOfLines={1}
-          >
-            Add New
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* ─── Create / Edit Service Modal ────────────────────────────────────── */}
+      <Modal
+        isVisible={isCreatingService}
+        onBackdropPress={() => setIsCreatingService(false)}
+        style={{ margin: 0, justifyContent: 'flex-end' }}
+        avoidKeyboard
+      >
+        <View className={`rounded-t-[40px] p-6 max-h-[90%] ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+          <View className={`w-12 h-1.5 rounded-full self-center mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
 
-      {/* Services List */}
-      {services.length === 0 ? (
-        <View className={`items-center py-10 rounded-3xl border border-dashed mb-6 ${isDark ? 'border-slate-700 bg-slate-900/50' : 'border-slate-200 bg-white'}`}>
-          <Text className={`font-bold text-sm ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>No services listed yet.</Text>
-        </View>
-      ) : (
-        <View className="mb-6">
-          {services.map((svc, index) => (
-            <ServiceCard
-              key={index}
-              service={svc}
-              onEdit={() => handleEditServicePress(svc)}
-              onDelete={() => onDeleteService(svc._id)}
-            />
-          ))}
-        </View>
-      )}
-    </ScrollView>
-
-    {/* ─── Create / Edit Service Modal ────────────────────────────────────── */}
-    <Modal
-      isVisible={isCreatingService}
-      onBackdropPress={() => setIsCreatingService(false)}
-      style={{ margin: 0, justifyContent: 'flex-end' }}
-      avoidKeyboard
-    >
-      <View className={`rounded-t-[40px] p-6 max-h-[90%] ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-        <View className={`w-12 h-1.5 rounded-full self-center mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
-
-        <View className="flex-row justify-between items-center mb-6">
-          <View>
-            <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              {editingServiceId ? 'Edit Service' : 'New Service'}
-            </Text>
-            <Text className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-              {editingServiceId ? 'Modify your marketplace listing' : 'Create a new marketplace listing'}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => setIsCreatingService(false)}
-            className={`p-2 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}
-          >
-            <X size={20} color={isDark ? '#f1f5f9' : '#000'} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView showsVerticalScrollIndicator={false} className="mb-6">
-          <View className="space-y-6">
-
-            {/* Basic Info */}
+          <View className="flex-row justify-between items-center mb-6">
             <View>
-              <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                Basic Information
+              <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                {editingServiceId ? 'Edit Service' : 'New Service'}
               </Text>
-              <View className="mb-4">
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Service Listing Title</Text>
-                <Controller control={control} name="name" rules={{ required: 'Required' }}
-                  render={({ field: { onChange, value } }) => (
-                    <TextInput
-                      className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                      placeholder="e.g. Emergency AC Repair"
-                      placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                      value={value}
-                      onChangeText={onChange}
-                    />
-                  )}
-                />
-              </View>
+              <Text className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                {editingServiceId ? 'Modify your marketplace listing' : 'Create a new marketplace listing'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsCreatingService(false)}
+              className={`p-2 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}
+            >
+              <X size={20} color={isDark ? '#f1f5f9' : '#000'} />
+            </TouchableOpacity>
+          </View>
 
-              <View className="flex-row space-x-3 mb-4">
-                <View className="flex-1 mr-1.5">
-                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Category</Text>
-                  <Controller control={control} name="service_type" rules={{ required: true }}
-                    render={({ field: { onChange, value } }) => (
-                      <Dropdown
-                        style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
-                        containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
-                        itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 13 }}
-                        activeColor={isDark ? '#334155' : '#f1f5f9'}
-                        placeholderStyle={{ fontSize: 13, color: isDark ? '#475569' : '#94a3b8' }}
-                        selectedTextStyle={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}
-                        data={SERVICE_CATEGORIES}
-                        labelField="label"
-                        valueField="value"
-                        search
-                        placeholder="Select"
-                        value={value}
-                        onChange={item => onChange(item.value)}
-                      />
-                    )}
-                  />
-                </View>
-                <View className="flex-1 ml-1.5">
-                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Specialization</Text>
-                  <Controller control={control} name="specialization" rules={{ required: true }}
-                    render={({ field: { onChange, value } }) => (
-                      <Dropdown
-                        style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
-                        containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
-                        itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 13 }}
-                        activeColor={isDark ? '#334155' : '#f1f5f9'}
-                        placeholderStyle={{ fontSize: 13, color: isDark ? '#475569' : '#94a3b8' }}
-                        selectedTextStyle={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}
-                        data={selectedServiceType ? (SPECIALIZATIONS_MAP[selectedServiceType] || []) : []}
-                        labelField="label"
-                        valueField="value"
-                        placeholder="Select"
-                        disabled={!selectedServiceType}
-                        value={value}
-                        onChange={item => onChange(item.value)}
-                      />
-                    )}
-                  />
-                </View>
-              </View>
+          <ScrollView showsVerticalScrollIndicator={false} className="mb-6">
+            <View className="space-y-6">
 
+              {/* Basic Info */}
               <View>
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Description</Text>
-                <Controller control={control} name="description" rules={{ required: true }}
-                  render={({ field: { onChange, value } }) => (
-                    <TextInput
-                      className={`rounded-2xl px-5 py-4 font-medium h-32 border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                      placeholder="Detailed description of what you offer..."
-                      placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                      multiline
-                      textAlignVertical="top"
-                      value={value}
-                      onChangeText={onChange}
-                    />
-                  )}
-                />
-              </View>
-            </View>
-
-            {/* Rates & Experience */}
-            <View>
-              <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Rates & Experience</Text>
-              <View className="flex-row space-x-3 mb-4">
-                <View className="flex-1 mr-1.5">
-                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Hourly Rate</Text>
-                  <Controller control={control} name="hourly_rate" rules={{ required: true }}
+                <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Basic Information
+                </Text>
+                <View className="mb-4">
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Service Listing Title</Text>
+                  <Controller control={control} name="name" rules={{ required: 'Required' }}
                     render={({ field: { onChange, value } }) => (
                       <TextInput
-                        className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                        keyboardType="numeric"
-                        placeholder="00"
+                        className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                        placeholder="e.g. Emergency AC Repair"
                         placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
                         value={value}
                         onChangeText={onChange}
@@ -1077,224 +1005,309 @@ export default function ProviderDashboard() {
                     )}
                   />
                 </View>
-                <View className="flex-1 ml-1.5">
-                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Experience (Years)</Text>
-                  <Controller control={control} name="experience_years" rules={{ required: true }}
-                    render={({ field: { onChange, value } }) => (
-                      <TextInput
-                        className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                        value={value}
-                        onChangeText={onChange}
-                      />
-                    )}
-                  />
-                </View>
-              </View>
-              <View className="mb-4">
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Coverage Area</Text>
-                <Controller control={control} name="location" rules={{ required: true }}
-                  render={({ field: { onChange, value } }) => (
-                    <TextInput
-                      className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                      placeholder="e.g. Islamabad, I-14"
-                      placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                      value={value}
-                      onChangeText={onChange}
-                    />
-                  )}
-                />
-              </View>
-            </View>
 
-            {/* Languages & Skills */}
-            <View>
-              <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Languages & Skills</Text>
-              <View className="mb-4">
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Languages</Text>
-                <Controller control={control} name="languages"
-                  render={({ field: { onChange, value } }) => (
-                    <MultiSelect
-                      style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
-                      containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
-                      itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 13 }}
-                      activeColor={isDark ? '#334155' : '#f1f5f9'}
-                      placeholderStyle={{ fontSize: 13, color: isDark ? '#475569' : '#94a3b8' }}
-                      selectedTextStyle={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}
-                      data={LANGUAGE_OPTIONS}
-                      labelField="label"
-                      valueField="value"
-                      placeholder="Select languages"
-                      value={value}
-                      onChange={item => onChange(item)}
-                      renderSelectedItem={(item, unSelect) => (
-                        <TouchableOpacity onPress={() => unSelect && unSelect(item)}>
-                          <View className={`rounded-lg px-3 py-1 mr-2 mt-2 flex-row items-center ${isDark ? 'bg-slate-700' : 'bg-slate-900'}`}>
-                            <Text className="text-white text-xs font-bold mr-2">{item.label}</Text>
-                            <X size={10} color="#fff" />
-                          </View>
-                        </TouchableOpacity>
+                <View className="flex-row space-x-3 mb-4">
+                  <View className="flex-1 mr-1.5">
+                    <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Category</Text>
+                    <Controller control={control} name="service_type" rules={{ required: true }}
+                      render={({ field: { onChange, value } }) => (
+                        <Dropdown
+                          style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
+                          containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
+                          itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 13 }}
+                          activeColor={isDark ? '#334155' : '#f1f5f9'}
+                          placeholderStyle={{ fontSize: 13, color: isDark ? '#475569' : '#94a3b8' }}
+                          selectedTextStyle={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}
+                          data={SERVICE_CATEGORIES}
+                          labelField="label"
+                          valueField="value"
+                          search
+                          placeholder="Select"
+                          value={value}
+                          onChange={item => onChange(item.value)}
+                        />
                       )}
                     />
-                  )}
+                  </View>
+                  <View className="flex-1 ml-1.5">
+                    <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Specialization</Text>
+                    <Controller control={control} name="specialization" rules={{ required: true }}
+                      render={({ field: { onChange, value } }) => (
+                        <Dropdown
+                          style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
+                          containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
+                          itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 13 }}
+                          activeColor={isDark ? '#334155' : '#f1f5f9'}
+                          placeholderStyle={{ fontSize: 13, color: isDark ? '#475569' : '#94a3b8' }}
+                          selectedTextStyle={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}
+                          data={selectedServiceType ? (SPECIALIZATIONS_MAP[selectedServiceType] || []) : []}
+                          labelField="label"
+                          valueField="value"
+                          placeholder="Select"
+                          disabled={!selectedServiceType}
+                          value={value}
+                          onChange={item => onChange(item.value)}
+                        />
+                      )}
+                    />
+                  </View>
+                </View>
+
+                <View>
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Description</Text>
+                  <Controller control={control} name="description" rules={{ required: true }}
+                    render={({ field: { onChange, value } }) => (
+                      <TextInput
+                        className={`rounded-2xl px-5 py-4 font-medium h-32 border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                        placeholder="Detailed description of what you offer..."
+                        placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                        multiline
+                        textAlignVertical="top"
+                        value={value}
+                        onChangeText={onChange}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              {/* Rates & Experience */}
+              <View>
+                <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Rates & Experience</Text>
+                <View className="flex-row space-x-3 mb-4">
+                  <View className="flex-1 mr-1.5">
+                    <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Hourly Rate</Text>
+                    <Controller control={control} name="hourly_rate" rules={{ required: true }}
+                      render={({ field: { onChange, value } }) => (
+                        <TextInput
+                          className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                          keyboardType="numeric"
+                          placeholder="00"
+                          placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                          value={value}
+                          onChangeText={onChange}
+                        />
+                      )}
+                    />
+                  </View>
+                  <View className="flex-1 ml-1.5">
+                    <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Experience (Years)</Text>
+                    <Controller control={control} name="experience_years" rules={{ required: true }}
+                      render={({ field: { onChange, value } }) => (
+                        <TextInput
+                          className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                          value={value}
+                          onChangeText={onChange}
+                        />
+                      )}
+                    />
+                  </View>
+                </View>
+                <View className="mb-4">
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Coverage Area</Text>
+                  <Controller control={control} name="location" rules={{ required: true }}
+                    render={({ field: { onChange, value } }) => (
+                      <TextInput
+                        className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                        placeholder="e.g. Islamabad, I-14"
+                        placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                        value={value}
+                        onChangeText={onChange}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              {/* Languages & Skills */}
+              <View>
+                <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Languages & Skills</Text>
+                <View className="mb-4">
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Languages</Text>
+                  <Controller control={control} name="languages"
+                    render={({ field: { onChange, value } }) => (
+                      <MultiSelect
+                        style={{ backgroundColor: isDark ? '#1e293b' : '#f8fafc', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? '#334155' : '#f1f5f9' }}
+                        containerStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', borderRadius: 16 }}
+                        itemTextStyle={{ color: isDark ? '#f1f5f9' : '#0f172a', fontSize: 13 }}
+                        activeColor={isDark ? '#334155' : '#f1f5f9'}
+                        placeholderStyle={{ fontSize: 13, color: isDark ? '#475569' : '#94a3b8' }}
+                        selectedTextStyle={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f1f5f9' : '#0f172a' }}
+                        data={LANGUAGE_OPTIONS}
+                        labelField="label"
+                        valueField="value"
+                        placeholder="Select languages"
+                        value={value}
+                        onChange={item => onChange(item)}
+                        renderSelectedItem={(item, unSelect) => (
+                          <TouchableOpacity onPress={() => unSelect && unSelect(item)}>
+                            <View className={`rounded-lg px-3 py-1 mr-2 mt-2 flex-row items-center ${isDark ? 'bg-slate-700' : 'bg-slate-900'}`}>
+                              <Text className="text-white text-xs font-bold mr-2">{item.label}</Text>
+                              <X size={10} color="#fff" />
+                            </View>
+                          </TouchableOpacity>
+                        )}
+                      />
+                    )}
+                  />
+                </View>
+
+                <View>
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Tools & Equipment</Text>
+                  <View className="flex-row mb-2">
+                    <TextInput
+                      className={`rounded-2xl px-5 py-4 font-medium flex-1 mr-2 border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                      placeholder="Add tool..."
+                      placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                      value={toolInput}
+                      onChangeText={setToolInput}
+                      onSubmitEditing={addTool}
+                    />
+                    <TouchableOpacity
+                      onPress={addTool}
+                      className={`w-14 rounded-2xl items-center justify-center ${isDark ? 'bg-slate-700' : 'bg-slate-900'}`}
+                    >
+                      <Plus size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                  <View className="flex-row flex-wrap">
+                    {tools.map((t, i) => (
+                      <Chip key={i} label={t} onRemove={() => removeTool(t)} />
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* Contact */}
+              <View>
+                <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Contact Details</Text>
+                <View className="mb-4">
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Phone Number</Text>
+                  <Controller control={control} name="phone" rules={{ required: true }}
+                    render={({ field: { onChange, value } }) => (
+                      <TextInput
+                        className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                        placeholder="+92 3XX XXXXXXX"
+                        placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                        keyboardType="phone-pad"
+                        value={value}
+                        onChangeText={onChange}
+                      />
+                    )}
+                  />
+                </View>
+              </View>
+
+              <Button
+                title={isSubmitting ? (editingServiceId ? "Saving..." : "Publishing...") : (editingServiceId ? "Save Changes" : "Launch Service")}
+                onPress={handleSubmit(onSaveService, onFormError)}
+                disabled={isSubmitting}
+                className="py-5 rounded-3xl mb-10 shadow-2xl"
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ─── Counter Offer Modal ─────────────────────────────────────────────── */}
+      <Modal
+        isVisible={isCounterModalOpen}
+        onBackdropPress={() => setIsCounterModalOpen(false)}
+        style={{ margin: 0, justifyContent: 'flex-end' }}
+        avoidKeyboard
+      >
+        <View className={`rounded-t-[40px] p-6 max-h-[85%] ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+          <View className={`w-12 h-1.5 rounded-full self-center mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
+
+          <View className="flex-row justify-between items-center mb-6">
+            <View>
+              <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Approve with Changes</Text>
+              <Text className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                Send counter-offer to {selectedRequest?.customer_name}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsCounterModalOpen(false)}
+              className={`p-2 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}
+            >
+              <X size={20} color={isDark ? '#f1f5f9' : '#000'} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} className="mb-6">
+            <View className="space-y-6">
+              <View>
+                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Counter Price (PKR/USD)</Text>
+                <TextInput
+                  className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                  placeholder="e.g. 35"
+                  placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                  keyboardType="numeric"
+                  value={counterPrice}
+                  onChangeText={setCounterPrice}
                 />
+              </View>
+
+              <View className="flex-row space-x-3">
+                <View className="flex-1 mr-1.5">
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>New Date</Text>
+                  <TextInput
+                    className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                    value={counterDate}
+                    onChangeText={setCounterDate}
+                  />
+                </View>
+                <View className="flex-1 ml-1.5">
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>New Time</Text>
+                  <TextInput
+                    className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                    placeholder="HH:MM"
+                    placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                    value={counterTime}
+                    onChangeText={setCounterTime}
+                  />
+                </View>
               </View>
 
               <View>
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Tools & Equipment</Text>
-                <View className="flex-row mb-2">
-                  <TextInput
-                    className={`rounded-2xl px-5 py-4 font-medium flex-1 mr-2 border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                    placeholder="Add tool..."
-                    placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                    value={toolInput}
-                    onChangeText={setToolInput}
-                    onSubmitEditing={addTool}
-                  />
-                  <TouchableOpacity
-                    onPress={addTool}
-                    className={`w-14 rounded-2xl items-center justify-center ${isDark ? 'bg-slate-700' : 'bg-slate-900'}`}
-                  >
-                    <Plus size={20} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-                <View className="flex-row flex-wrap">
-                  {tools.map((t, i) => (
-                    <Chip key={i} label={t} onRemove={() => removeTool(t)} />
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            {/* Contact */}
-            <View>
-              <Text className={`text-xs font-black uppercase tracking-widest mb-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Contact Details</Text>
-              <View className="mb-4">
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Phone Number</Text>
-                <Controller control={control} name="phone" rules={{ required: true }}
-                  render={({ field: { onChange, value } }) => (
-                    <TextInput
-                      className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                      placeholder="+92 3XX XXXXXXX"
-                      placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                      keyboardType="phone-pad"
-                      value={value}
-                      onChangeText={onChange}
-                    />
-                  )}
+                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Message to Customer (Optional)</Text>
+                <TextInput
+                  className={`rounded-2xl px-5 py-4 font-medium h-24 border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                  placeholder="Explain your changes..."
+                  placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                  multiline
+                  textAlignVertical="top"
+                  value={counterNote}
+                  onChangeText={setCounterNote}
                 />
               </View>
+
+              <Button
+                title="Send Counter Offer"
+                onPress={() => {
+                  if (!counterPrice || !counterDate || !counterTime) {
+                    Alert.alert("Required Fields", "Please enter new Price, Date and Time.");
+                    return;
+                  }
+                  handleRequestResponse(selectedRequest._id, 'counter_offer', {
+                    counter_price: Number(counterPrice),
+                    counter_date: counterDate,
+                    counter_time: counterTime,
+                    counter_note: counterNote,
+                  });
+                  setIsCounterModalOpen(false);
+                }}
+                className="py-5 rounded-3xl mb-10 shadow-2xl"
+              />
             </View>
-
-            <Button
-              title={isSubmitting ? (editingServiceId ? "Saving..." : "Publishing...") : (editingServiceId ? "Save Changes" : "Launch Service")}
-              onPress={handleSubmit(onSaveService, onFormError)}
-              disabled={isSubmitting}
-              className="py-5 rounded-3xl mb-10 shadow-2xl"
-            />
-          </View>
-        </ScrollView>
-      </View>
-    </Modal>
-
-    {/* ─── Counter Offer Modal ─────────────────────────────────────────────── */}
-    <Modal
-      isVisible={isCounterModalOpen}
-      onBackdropPress={() => setIsCounterModalOpen(false)}
-      style={{ margin: 0, justifyContent: 'flex-end' }}
-      avoidKeyboard
-    >
-      <View className={`rounded-t-[40px] p-6 max-h-[85%] ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
-        <View className={`w-12 h-1.5 rounded-full self-center mb-6 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`} />
-
-        <View className="flex-row justify-between items-center mb-6">
-          <View>
-            <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Approve with Changes</Text>
-            <Text className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-              Send counter-offer to {selectedRequest?.customer_name}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => setIsCounterModalOpen(false)}
-            className={`p-2 rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}
-          >
-            <X size={20} color={isDark ? '#f1f5f9' : '#000'} />
-          </TouchableOpacity>
+          </ScrollView>
         </View>
-
-        <ScrollView showsVerticalScrollIndicator={false} className="mb-6">
-          <View className="space-y-6">
-            <View>
-              <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Counter Price (PKR/USD)</Text>
-              <TextInput
-                className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                placeholder="e.g. 35"
-                placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                keyboardType="numeric"
-                value={counterPrice}
-                onChangeText={setCounterPrice}
-              />
-            </View>
-
-            <View className="flex-row space-x-3">
-              <View className="flex-1 mr-1.5">
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>New Date</Text>
-                <TextInput
-                  className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                  value={counterDate}
-                  onChangeText={setCounterDate}
-                />
-              </View>
-              <View className="flex-1 ml-1.5">
-                <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>New Time</Text>
-                <TextInput
-                  className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                  placeholder="HH:MM"
-                  placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                  value={counterTime}
-                  onChangeText={setCounterTime}
-                />
-              </View>
-            </View>
-
-            <View>
-              <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Message to Customer (Optional)</Text>
-              <TextInput
-                className={`rounded-2xl px-5 py-4 font-medium h-24 border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
-                placeholder="Explain your changes..."
-                placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
-                multiline
-                textAlignVertical="top"
-                value={counterNote}
-                onChangeText={setCounterNote}
-              />
-            </View>
-
-            <Button
-              title="Send Counter Offer"
-              onPress={() => {
-                if (!counterPrice || !counterDate || !counterTime) {
-                  Alert.alert("Required Fields", "Please enter new Price, Date and Time.");
-                  return;
-                }
-                handleRequestResponse(selectedRequest._id, 'counter_offer', {
-                  counter_price: Number(counterPrice),
-                  counter_date: counterDate,
-                  counter_time: counterTime,
-                  counter_note: counterNote,
-                });
-                setIsCounterModalOpen(false);
-              }}
-              className="py-5 rounded-3xl mb-10 shadow-2xl"
-            />
-          </View>
-        </ScrollView>
-      </View>
-    </Modal>
-  </SafeAreaView>
-);
+      </Modal>
+    </SafeAreaView>
+  );
 }
