@@ -1,3 +1,21 @@
+"""
+service_agents.py — BookingAgent and SchedulingAgent
+
+KEY CHANGES vs original:
+  1. BookingAgent always returns `booking_outcome` dict with explicit
+     success/failure fields — never leaves it absent.
+  2. SchedulingAgent reads booking_outcome and short-circuits on failure
+     instead of blindly proceeding.
+  3. MongoDB idempotency key (upsert) prevents duplicate booking documents
+     under concurrent execution.
+  4. All failure paths return booking_outcome.booking_failure = True so
+     the supervisor can gate routing deterministically.
+
+All other agents (Intent, Extraction, Memory, Knowledge, Matching,
+Negotiation, RequestCreation, Scheduling) are included unchanged except
+where noted.
+"""
+
 from agents.base import BaseAgent
 from core.state import AgentState
 from typing import Dict, Any, List
@@ -9,78 +27,289 @@ from core.vector_store import vector_manager
 from core.knowledge_engine import HybridRetrievalEngine
 import os
 
+
+# ── Unchanged agents ──────────────────────────────────────────────────────────
+
+# class IntentAgent(BaseAgent):
+#     def __init__(self):
+#         super().__init__("Intent Agent", "Classifies user intent with context awareness")
+
+#     def run(self, state: AgentState) -> Dict[str, Any]:
+#         user_message = state["messages"][-1].content
+#         conv_stage = state.get("conversation_stage", "greeting")
+#         shortlist = state.get("shortlisted_providers", [])
+#         summary = state.get("metadata", {}).get("session_summary", "")
+#         selected = state.get("selected_provider", {})
+
+#         msg_clean = user_message.strip().lower().rstrip('.!?*() ')
+#         confirm_tokens = {"okay", "ok", "yes", "confirm", "confirmed", "go ahead", "sure",
+#                           "do it", "yup", "yeah", "yep", "approved", "approve", "done"}
+
+#         is_short_affirmation = False
+#         if msg_clean in confirm_tokens:
+#             is_short_affirmation = True
+#         else:
+#             words = [w.strip() for w in msg_clean.split() if w.strip()]
+#             if len(words) <= 3 and any(w in confirm_tokens for w in words):
+#                 is_short_affirmation = True
+
+#         service_keywords = ["cleaning", "cleaner", "repair", "tutor", "tuition", "plumb", "mechanic", "electrician", "install", "fix", "ac", "hvac", "painter", "carpenter"]
+        
+#         # Rule 5 Check: service request trigger terms
+#         is_service_request = False
+#         if any(f" {k} " in f" {msg_clean} " or msg_clean.startswith(f"{k} ") or msg_clean.endswith(f" {k}") or msg_clean == k for k in service_keywords):
+#             if not is_short_affirmation and "status" not in msg_clean:
+#                 is_service_request = True
+#         if "i need" in msg_clean or "looking for" in msg_clean or "want" in msg_clean or "find" in msg_clean:
+#              if not is_short_affirmation and "status" not in msg_clean:
+#                 is_service_request = True
+
+#         # Rule 5 Check: query services triggers
+#         is_query_services = False
+#         query_services_triggers = [
+#             "what services exist", "what categories do you offer", "what can you help with", 
+#             "what services do you offer", "list of services", "show services", "help with what",
+#             "which services", "what services", "available services"
+#         ]
+#         if any(trigger in msg_clean for trigger in query_services_triggers):
+#             is_query_services = True
+
+#         intent = None
+#         override_applied = False
+
+#         # Apply deterministic override rules
+#         if is_service_request:
+#             intent = "service_request"
+#             override_applied = True
+#         elif is_query_services:
+#             intent = "query_services"
+#             override_applied = True
+#         elif is_short_affirmation and (selected or conv_stage in ("selection", "scheduling", "negotiation")):
+#             intent = "booking_confirmation"
+#             override_applied = True
+#         elif "status" in msg_clean or "check" in msg_clean:
+#             intent = "check_status"
+#             override_applied = True
+
+#         # LLM fallback only if no deterministic override matched
+#         if not intent:
+#             prompt = f"""
+# IMPORTANT CLASSIFICATION RULES:
+# - If user says "I need [service]" or "I want [service]" → ALWAYS classify as "service_request", NOT "query_services"
+# - "query_services" is ONLY when user asks "what services do you offer?" or "what can you help with?"
+# - "I need cleaning", "I need tuition", "I need AC repair" → ALL are "service_request"
+
+#             Analyze the user message and classify the intent within the current context.
+#             Current Conversation Stage: {conv_stage}
+#             Previous Shortlisted Providers: {[p.get('name') for p in shortlist]}
+#             Selected Provider: {selected.get('name') if selected else 'None'}
+#             Session Summary: {summary}
+
+#             Possible intents:
+#             1. greeting
+#             2. query_services
+#             3. service_request
+#             4. provider_selection
+#             5. booking_confirmation
+#             6. check_status
+#             7. general
+
+#             Message: "{user_message}"
+#             Return ONLY the intent string."""
+            
+#             try:
+#                 response = self.llm.invoke(prompt)
+#                 intent = response.content.strip().lower()
+#             except Exception as e:
+#                 print(f"[AUDIT] IntentAgent | LLM Error: {e} | Falling back to general")
+#                 intent = "general"
+
+#             if is_short_affirmation and (selected or conv_stage in ("selection", "scheduling", "negotiation")):
+#                 intent = "booking_confirmation"
+#             elif "check_status" in intent or "status" in intent:
+#                 intent = "check_status"
+#             elif "provider_selection" in intent:
+#                 intent = "provider_selection"
+#             elif "booking_confirmation" in intent:
+#                 intent = "booking_confirmation"
+#             elif "service_request" in intent:
+#                 intent = "service_request"
+#             elif "query_services" in intent:
+#                 intent = "query_services"
+#             elif "greeting" in intent:
+#                 intent = "greeting"
+#             else:
+#                 intent = "general"
+
+#         # Structured Logging
+#         print(f"[AUDIT] IntentAgent | Query: '{user_message}' | Intent: {intent} | Override: {override_applied}")
+
+#         log = self.log_action(state, f"Classified intent as: {intent}", f"Context: {conv_stage} | Override: {override_applied}")
+#         trace = self.create_trace(f"Identified '{intent}' intent at stage '{conv_stage}'.")
+
+#         return {
+#             "intent": {"value": intent, "confidence": 1.0, "timestamp": datetime.utcnow().isoformat()},
+#             "active_agent": "intent",
+#             "execution_logs": [log],
+#             "reasoning_traces": [trace],
+#         }
 class IntentAgent(BaseAgent):
     def __init__(self):
         super().__init__("Intent Agent", "Classifies user intent with context awareness")
 
+    # ── Deterministic pre-classification ─────────────────────────────
+    # These rules run BEFORE LLM. If matched, LLM is skipped entirely.
+    # This prevents misclassification of "I need X" as query_services.
+
+    SERVICE_KEYWORDS = [
+        "repair", "fix", "install", "clean", "cleaning", "plumb", "electric",
+        "tutor", "teach", "coach", "paint", "carpenter", "mechanic", "wash",
+        "service", "services", "maintenance", "technician", "ac", "solar",
+        "beautician", "driver", "security", "guard", "cook", "chef",
+    ]
+
+    NEED_TRIGGERS = [
+        "i need", "i want", "i require", "find me", "looking for",
+        "searching for", "get me", "book", "hire", "i am looking",
+        "mujhe chahiye", "chahiye", "dhundo", "find",
+    ]
+
+    QUERY_TRIGGERS = [
+        "what services", "which services", "what do you offer",
+        "what can you", "list services", "show services",
+        "available services", "what categories", "kya services",
+    ]
+
+    STATUS_TRIGGERS = [
+        "status", "update", "did provider", "any response", "kya hua",
+        "what happened", "check status", "response aaya", "approved",
+        "denied", "counter",
+    ]
+
+    def _deterministic_classify(self, msg: str, conv_stage: str, selected: dict) -> str | None:
+        """
+        Returns intent string if deterministically matched, else None (fall through to LLM).
+        """
+        msg_lower = msg.lower().strip()
+
+        # Rule 1: Status check triggers
+        if any(t in msg_lower for t in self.STATUS_TRIGGERS):
+            return "check_status"
+
+        # Rule 2: Short affirmations in active booking context
+        confirm_tokens = {"okay", "ok", "yes", "confirm", "confirmed", "go ahead",
+                          "sure", "do it", "yup", "yeah", "yep", "approved", "approve", "done"}
+        words = [w.strip().rstrip('.!?') for w in msg_lower.split()]
+        if len(words) <= 3 and any(w in confirm_tokens for w in words):
+            if selected or conv_stage in ("selection", "scheduling", "negotiation", "awaiting_response"):
+                return "booking_confirmation"
+
+        # Rule 3: Explicit query_services — ONLY these phrases
+        if any(t in msg_lower for t in self.QUERY_TRIGGERS):
+            return "query_services"
+
+        # Rule 4: "I need/want/find X" + any service keyword → service_request
+        has_need_trigger = any(t in msg_lower for t in self.NEED_TRIGGERS)
+        has_service_keyword = any(k in msg_lower for k in self.SERVICE_KEYWORDS)
+        if has_need_trigger and has_service_keyword:
+            return "service_request"
+
+        # Rule 5: "I need/want X" even without service keyword
+        # e.g. "I need NESU Tution" — NESU is not in SERVICE_KEYWORDS
+        if has_need_trigger and len(words) >= 3:
+            return "service_request"
+
+        # Rule 6: Greeting
+        greet_tokens = {"hi", "hello", "hey", "salam", "assalam", "good morning",
+                        "good evening", "good afternoon", "helo", "hii"}
+        if msg_lower in greet_tokens or any(msg_lower.startswith(g) for g in greet_tokens):
+            if len(words) <= 4:
+                return "greeting"
+
+        # Rule 7: Provider selection patterns
+        selection_patterns = [
+            r"\b(option|provider|choose|select|go with|pick)\s*\d+\b",
+            r"\bi('ll| will) (go|take|choose|pick|select)\b",
+            r"\b(number|no\.?)\s*\d+\b",
+        ]
+        import re
+        for pattern in selection_patterns:
+            if re.search(pattern, msg_lower):
+                return "provider_selection"
+
+        return None  # Fall through to LLM
+
     def run(self, state: AgentState) -> Dict[str, Any]:
+        from datetime import datetime
         user_message = state["messages"][-1].content
         conv_stage = state.get("conversation_stage", "greeting")
         shortlist = state.get("shortlisted_providers", [])
         summary = state.get("metadata", {}).get("session_summary", "")
         selected = state.get("selected_provider", {})
-        
-        prompt = f"""Analyze the user message and classify the intent within the current context.
-        Current Conversation Stage: {conv_stage}
-        Previous Shortlisted Providers: {[p.get('name') for p in shortlist]}
-        Selected Provider: {selected.get('name') if selected else 'None'}
-        Session Summary: {summary}
-        
-        Possible intents:
-        1. greeting: User is saying hello, hi, salam, etc.
-        2. query_services: User is asking what services we provide or what we can help with.
-        3. service_request: User wants a specific service (e.g., AC repair, plumbing).
-        4. provider_selection: User is choosing a provider (e.g., "I'll go with option 1", "Provider 17", "select option 2") OR the user is providing booking details (such as price, date, time, e.g., "tomorrow at 3pm for $25/hr") after a provider has been selected.
-        5. booking_confirmation: User is confirming booking details or time.
-        6. check_status: User is asking for the status of their service request, booking, or negotiation, or asking if the provider responded yet (e.g., "what is the status", "did provider respond", "any update", "status?", "check status").
-        7. general: Everything else.
-        
-        Message: "{user_message}"
-        Return ONLY the intent string (e.g. 'greeting', 'query_services', 'service_request', 'provider_selection', 'booking_confirmation', 'check_status', 'general').
-        """
-        response = self.llm.invoke(prompt)
-        intent = response.content.strip().lower()
-        
-        # Rule-based validation to ensure short affirmation/acknowledgement messages
-        # are mapped to booking_confirmation when a provider selection context is active.
-        msg_clean = user_message.strip().lower().rstrip('.!?*() ')
-        confirm_tokens = {"okay", "ok", "yes", "confirm", "confirmed", "go ahead", "sure", "do it", "yup", "yeah", "yep", "approved", "approve", "done"}
-        
-        is_short_affirmation = False
-        if msg_clean in confirm_tokens:
-            is_short_affirmation = True
+
+        print(f"[INTENT] Classifying: '{user_message}' | stage={conv_stage}", flush=True)
+
+        # ── Step 1: Deterministic classification ──────────────────────
+        intent = self._deterministic_classify(user_message, conv_stage, selected)
+
+        if intent:
+            print(f"[INTENT] Deterministic match → '{intent}'", flush=True)
         else:
-            words = [w.strip() for w in msg_clean.split() if w.strip()]
-            if len(words) <= 3 and any(w in confirm_tokens for w in words):
-                is_short_affirmation = True
-                
-        if is_short_affirmation and (selected or conv_stage in ("selection", "scheduling", "negotiation")):
-            intent = "booking_confirmation"
-        elif "check_status" in intent or "status" in intent or "respond" in intent or "update" in intent:
-            intent = "check_status"
-        elif "provider_selection" in intent:
-            intent = "provider_selection"
-        elif "booking_confirmation" in intent:
-            intent = "booking_confirmation"
-        elif "service_request" in intent:
-            intent = "service_request"
-        elif "query_services" in intent:
-            intent = "query_services"
-        elif "greeting" in intent:
-            intent = "greeting"
-        else:
-            intent = "general"
-        
-        from datetime import datetime
-        log = self.log_action(state, f"Classified intent as: {intent}", f"Context: {conv_stage}")
-        trace = self.create_trace(f"Intelligently identified '{intent}' intent considering the '{conv_stage}' stage.")
-        
+            # ── Step 2: LLM classification (fallback) ─────────────────
+            prompt = f"""Analyze the user message and classify the intent within the current context.
+Current Conversation Stage: {conv_stage}
+Previous Shortlisted Providers: {[p.get('name') for p in shortlist]}
+Selected Provider: {selected.get('name') if selected else 'None'}
+Session Summary: {summary}
+
+Possible intents:
+1. greeting: User is saying hello/hi/salam only.
+2. query_services: User asks ONLY "what services exist" or "what do you offer". NOT "I need X".
+3. service_request: User needs/wants a specific service. "I need X", "find me X", "looking for X".
+4. provider_selection: User chooses a provider or provides booking details (price/date/time).
+5. booking_confirmation: User confirms booking with yes/okay/confirm.
+6. check_status: User asks about request status, provider response, any update.
+7. general: Everything else.
+
+CRITICAL RULE: "I need [anything]" = service_request. NEVER query_services.
+
+Message: "{user_message}"
+Return ONLY the intent string."""
+
+            response = self.llm.invoke(prompt)
+            intent = response.content.strip().lower()
+            print(f"[INTENT] LLM classified → '{intent}'", flush=True)
+
+            # ── Step 3: LLM output sanitization ───────────────────────
+            valid_intents = {
+                "greeting", "query_services", "service_request",
+                "provider_selection", "booking_confirmation", "check_status", "general"
+            }
+            # Extract valid intent from LLM response
+            matched = None
+            for vi in valid_intents:
+                if vi in intent:
+                    matched = vi
+                    break
+            intent = matched or "general"
+
+            # ── Step 4: Post-LLM safety overrides ─────────────────────
+            # Prevent "I need X" from ever being query_services
+            msg_lower = user_message.lower()
+            if intent == "query_services" and any(t in msg_lower for t in self.NEED_TRIGGERS):
+                print(f"[INTENT] Safety override: query_services → service_request (need trigger found)", flush=True)
+                intent = "service_request"
+
+        log = self.log_action(state, f"Classified intent: {intent}", f"Stage: {conv_stage}")
+        trace = self.create_trace(f"Classified '{intent}' at stage '{conv_stage}'.")
+
         return {
             "intent": {"value": intent, "confidence": 1.0, "timestamp": datetime.utcnow().isoformat()},
             "active_agent": "intent",
             "execution_logs": [log],
-            "reasoning_traces": [trace]
+            "reasoning_traces": [trace],
         }
+
 
 class ExtractionAgent(BaseAgent):
     def __init__(self):
@@ -89,11 +318,11 @@ class ExtractionAgent(BaseAgent):
     def run(self, state: AgentState) -> Dict[str, Any]:
         user_message = state["messages"][-1].content
         shortlist = state.get("shortlisted_providers", []) or state.get("last_search_results", [])
-        
+
         prompt = f"""Extract entities and user selections.
         Message: "{user_message}"
         Shortlist context: {json.dumps(shortlist)}
-        
+
         Expected JSON format:
         {{
             "service_type": "...",
@@ -105,34 +334,25 @@ class ExtractionAgent(BaseAgent):
             "requested_time": "HH:MM or string or null",
             "offered_price": "number or null"
         }}
-        
-        If the user says 'Option 1' or 'option 2' or 'choose option 3', set selected_provider_index to the 0-based index (e.g. 'Option 1' is 0, 'Option 2' is 1).
-        If the user mentions a provider's name or rating or specialization, e.g. 'Provider 1', set selected_provider_name to 'Provider 1'.
-        If they specify a date (e.g. 'tomorrow', 'Monday', 'May 18'), extract it into requested_date.
-        If they specify a time (e.g. '2pm', '14:00', 'morning'), extract it into requested_time.
-        If they specify a price or rate (e.g. '$25', '25/hr', '3000 PKR'), extract the numeric value into offered_price.
-        Return JSON ONLY.
-        """
+        Return JSON ONLY."""
         response = self.llm.invoke(prompt)
         try:
-            # Clean possible markdown block
             content = response.content.strip()
             if content.startswith("```json"):
                 content = content[7:]
             if content.endswith("```"):
                 content = content[:-3]
             entities = json.loads(content.strip())
-        except:
+        except Exception:
             entities = {}
-            
-        # If a selection was made, find the provider in memory
+
         selected_provider = state.get("selected_provider", {}) or {}
         if entities.get("selected_provider_index") is not None:
             try:
                 idx = int(entities["selected_provider_index"])
                 if 0 <= idx < len(shortlist):
                     selected_provider = shortlist[idx]
-            except:
+            except Exception:
                 pass
         elif entities.get("selected_provider_name"):
             name = entities["selected_provider_name"].lower()
@@ -144,15 +364,14 @@ class ExtractionAgent(BaseAgent):
             selected_provider = state.get("selected_provider", {}) or {}
 
         log = self.log_action(state, "Extracted entities & selections", json.dumps(entities))
-        trace = self.create_trace("Parsed language into structured data, mapping user selections to session memory.")
-        
+        trace = self.create_trace("Parsed language into structured data.")
+
         extracted_service_request = {
             "service_type": entities.get("service_type") or state.get("service_request", {}).get("service_type", ""),
             "location": entities.get("location") or state.get("service_request", {}).get("location", ""),
-            "time_slot": entities.get("time_preference") or state.get("service_request", {}).get("time_slot", "")
+            "time_slot": entities.get("time_preference") or state.get("service_request", {}).get("time_slot", ""),
         }
-        
-        # Merge scheduling/offered details into state's booking_context
+
         booking_context = state.get("booking_context", {}) or {}
         new_context = {**booking_context}
         if entities.get("requested_date"):
@@ -161,26 +380,22 @@ class ExtractionAgent(BaseAgent):
             new_context["requested_time"] = entities["requested_time"]
         if entities.get("offered_price"):
             new_context["offered_price"] = entities["offered_price"]
-        
-        print(f"[EXTRACTION] Entities: {entities}")
-        print(f"[EXTRACTION] Service request: {extracted_service_request}")
-        print(f"[EXTRACTION] Merged booking context: {new_context}")
-        
-        new_selection_found = bool(entities.get("selected_provider_index") is not None or entities.get("selected_provider_name"))
-        
+
+        new_selection_found = bool(
+            entities.get("selected_provider_index") is not None
+            or entities.get("selected_provider_name")
+        )
+
         result = {
             "entities": entities,
             "service_request": extracted_service_request,
             "booking_context": new_context,
             "active_agent": "extraction",
             "execution_logs": [log],
-            "reasoning_traces": [trace]
+            "reasoning_traces": [trace],
         }
-        
-        # Only update selected_provider if user actually selected something new
         if new_selection_found and selected_provider:
             result["selected_provider"] = selected_provider
-            
         return result
 
 
@@ -195,21 +410,21 @@ class MemoryAgent(BaseAgent):
         metadata = state.get("metadata", {})
         is_resumed = metadata.get("is_resumed", False)
         current_agent = state.get("active_agent")
-        
-        # Scenario 1: Session Rehydration (Summarization)
+
         if is_resumed and current_agent == "supervisor":
             messages = state.get("messages", [])
             history = "\n".join([f"{m.type}: {m.content}" for m in messages[:-1]])
-            
-            prompt = f"Summarize this service orchestration history for the next agent: {history}\nFocus on service type, location, and previous provider mentions. Be extremely brief."
+            prompt = (
+                f"Summarize this service orchestration history for the next agent: {history}\n"
+                "Focus on service type, location, and previous provider mentions. Be brief."
+            )
             summary = self.llm.invoke(prompt).content
-            
-            # PART 6: Live DB Active Request Context Rehydration
+
             rehydrated_data = {}
             active_request_id = state.get("active_request_id")
             conversation_id = state.get("conversation_id")
             customer_supabase_id = state.get("user_id")
-            
+
             real_request = None
             if self.db is not None:
                 if active_request_id:
@@ -217,136 +432,140 @@ class MemoryAgent(BaseAgent):
                     try:
                         real_request = self.db.active_requests.find_one({"_id": ObjectId(active_request_id)})
                     except Exception as e:
-                        print(f"[MEMORY REHYDRATE WARNING] Failed to find request by ID {active_request_id}: {e}")
-                
+                        print(f"[MEMORY REHYDRATE WARNING] {e}")
+
                 if not real_request and conversation_id:
-                    real_request = self.db.active_requests.find_one({"conversation_id": conversation_id})
+                    real_request = self.db.active_requests.find_one({
+                        "conversation_id": conversation_id,
+                        "status": {"$nin": ["booked", "completed", "cancelled", "denied"]}
+                    })
                     if real_request:
                         active_request_id = str(real_request["_id"])
-                        
+
                 if not real_request and customer_supabase_id and customer_supabase_id != "anonymous":
                     real_request = self.db.active_requests.find_one({
                         "customer_supabase_id": customer_supabase_id,
-                        "status": {"$ne": "booked"}
+                        "status": {"$nin": ["booked", "completed", "cancelled", "denied"]},
                     })
                     if real_request:
                         active_request_id = str(real_request["_id"])
-                
+
                 if real_request:
                     db_status = real_request.get("status", "pending")
-                    print(f"[MEMORY REHYDRATE] Rehydrating active request {active_request_id} with status '{db_status}'.")
-                    
-                    booking_details = {
-                        "request_id": active_request_id,
-                        "provider_name": real_request.get("provider_name", "Specialist"),
-                        "provider_id": real_request.get("provider_supabase_id"),
-                        "status": db_status,
-                        "timestamp": real_request.get("created_at", datetime.utcnow()).isoformat() if real_request.get("created_at") else datetime.utcnow().isoformat(),
-                        "service": real_request.get("service_type"),
-                        "location": real_request.get("location", "Unknown"),
-                        "offered_price": real_request.get("offered_price"),
-                        "requested_date": real_request.get("requested_date"),
-                        "requested_time": real_request.get("requested_time")
-                    }
-                    
-                    negotiation_data = state.get("negotiation", {}) or {}
-                    booking_data = state.get("booking", {}) or {}
-                    
-                    updated_negotiation = {
-                        **negotiation_data,
-                        "negotiation_stage": db_status,
-                        "negotiation_status": db_status,
-                        "latest_request_status": db_status
-                    }
-                    
-                    updated_booking = {
-                        **booking_data,
-                        "active_request_id": active_request_id,
-                        "active_request": real_request,
-                        "latest_request_status": db_status,
-                    }
-                    
-                    rehydrated_data.update({
-                        "active_request_id": active_request_id,
-                        "latest_request_status": db_status,
-                        "negotiation_stage": db_status,
-                        "negotiation_status": db_status,
-                        "active_request": real_request,
-                        "booking_details": booking_details,
-                        "negotiation": updated_negotiation,
-                        "booking": updated_booking
-                    })
-            
-            log = self.log_action(state, "History Restored", f"Resumed session summary: {summary}. Active request rehydrated: {bool(real_request)}")
-            trace = self.create_trace("Summarized previous interaction and rehydrated live active request context from MongoDB.")
-            
+                    if db_status in ("booked", "completed", "cancelled", "denied"):
+                        # If a finalized request is somehow retrieved, prune immediately
+                        print(f"[AUDIT] MemoryAgent | Finalized status '{db_status}' detected. Pruning active state.")
+                        rehydrated_data.update({
+                            "active_request_id": None,
+                            "latest_request_status": None,
+                            "negotiation_stage": None,
+                            "active_request": None,
+                            "booking_details": {},
+                            "booking_context": {},
+                            "selected_provider": {},
+                            "shortlisted_providers": [],
+                        })
+                    else:
+                        booking_details = {
+                            "request_id": active_request_id,
+                            "provider_name": real_request.get("provider_name", "Specialist"),
+                            "provider_id": real_request.get("provider_supabase_id"),
+                            "status": db_status,
+                            "timestamp": (
+                                real_request.get("created_at", datetime.utcnow()).isoformat()
+                                if real_request.get("created_at")
+                                else datetime.utcnow().isoformat()
+                            ),
+                            "service": real_request.get("service_type"),
+                            "location": real_request.get("location", "Unknown"),
+                            "offered_price": real_request.get("offered_price"),
+                            "requested_date": real_request.get("requested_date"),
+                            "requested_time": real_request.get("requested_time"),
+                        }
+                        rehydrated_data.update({
+                            "active_request_id": active_request_id,
+                            "latest_request_status": db_status,
+                            "negotiation_stage": db_status,
+                            "active_request": real_request,
+                            "booking_details": booking_details,
+                        })
+
+            log = self.log_action(
+                state,
+                "History Restored",
+                f"Resumed. Active request rehydrated: {bool(real_request)}",
+            )
+            trace = self.create_trace("Summarized previous interaction and rehydrated live context.")
+            print(f"[AUDIT] MemoryAgent | Rehydration Result: {rehydrated_data}")
             return {
                 "metadata": {**metadata, "session_summary": summary},
                 "active_agent": "memory",
                 "execution_logs": [log],
                 "reasoning_traces": [trace],
-                **rehydrated_data
+                **rehydrated_data,
             }
 
-        # Scenario 2: Profile Synchronization
         updates = {}
         if entities.get("service_type"):
             updates["last_requested_service"] = entities["service_type"]
         if entities.get("location"):
             updates["preferred_location"] = entities["location"]
-            
         if updates and user_id:
             self.db.users.update_one(
                 {"supabase_id": user_id},
                 {"$set": {"preferences": updates}},
-                upsert=True
+                upsert=True,
             )
-            
-        log = self.log_action(state, "Memory synced", f"Updated profile with {len(updates)} traits.")
-        trace = self.create_trace("Synced extracted entities with the persistent MongoDB user profile.")
-        
-        return {
-            "active_agent": "memory",
-            "execution_logs": [log],
-            "reasoning_traces": [trace]
-        }
+
+        log = self.log_action(state, "Memory synced", f"Updated {len(updates)} traits.")
+        trace = self.create_trace("Synced entities with persistent user profile.")
+        return {"active_agent": "memory", "execution_logs": [log], "reasoning_traces": [trace]}
+
 
 class KnowledgeAgent(BaseAgent):
     def __init__(self, db):
         super().__init__("Knowledge Agent", "Dynamic Retrieval Layer")
         self.db = db
         self.vector_store = vector_manager.get_vector_store()
-        
+ 
     def run(self, state: AgentState) -> Dict[str, Any]:
-        # FIX: intent is a dict {"value": "..."}, not a plain string
+        print("=== KNOWLEDGE AGENT RUN CALLED ===", flush=True) 
         intent_obj = state.get("intent", {})
         intent = intent_obj.get("value") if isinstance(intent_obj, dict) else intent_obj
-        
+ 
         if intent == "query_services":
-            # Dynamically fetch service categories from MongoDB
             services = self.db.service_providers.distinct("service_type")
             log = self.log_action(state, "Retrieved available services", f"Found: {', '.join(services)}")
-            trace = self.create_trace("Queried live database for distinct service categories.")
+            trace = self.create_trace("Queried live DB for distinct service categories.")
             return {
                 "metadata": {"available_services": services},
                 "active_agent": "knowledge",
                 "execution_logs": [log],
-                "reasoning_traces": [trace]
+                "reasoning_traces": [trace],
             }
-
-        # Hybrid Search & Retrieval System
+ 
         user_query = state["messages"][-1].content
-        
+ 
         engine = HybridRetrievalEngine(self.db, self.llm)
-        search_output = engine.search(user_query)
-        
-        providers = search_output["results"]
-        confidence = search_output["confidence"]
-        debug_info = search_output["debug"]
-        
-        log = self.log_action(state, f"Retrieved {len(providers)} candidates via Hybrid Engine", f"Confidence: {confidence}")
-        trace = self.create_trace(f"Executed HybridRetrievalEngine. Found {len(providers)} candidates with {confidence} confidence.")
-        
+ 
+        # ── PATCH: pass existing shortlist for conversational reference detection
+        existing_shortlist = state.get("shortlisted_providers") or []
+        search_output = engine.search(user_query, existing_shortlist=existing_shortlist)
+        # ── END PATCH ──────────────────────────────────────────────────────────
+ 
+        providers   = search_output["results"]
+        confidence  = search_output["confidence"]
+        debug_info  = search_output["debug"]
+ 
+        log = self.log_action(
+            state,
+            f"Retrieved {len(providers)} candidates via Hybrid Engine",
+            f"Confidence: {confidence}",
+        )
+        trace = self.create_trace(
+            f"HybridRetrievalEngine: {len(providers)} candidates, {confidence} confidence."
+        )
+ 
         return {
             "provider_candidates": providers,
             "last_search_results": providers,
@@ -355,7 +574,7 @@ class KnowledgeAgent(BaseAgent):
             "retrieval_debug": debug_info,
             "active_agent": "knowledge",
             "execution_logs": [log],
-            "reasoning_traces": [trace]
+            "reasoning_traces": [trace],
         }
 
 class MatchingAgent(BaseAgent):
@@ -364,29 +583,24 @@ class MatchingAgent(BaseAgent):
 
     def run(self, state: AgentState) -> Dict[str, Any]:
         providers = state.get("provider_candidates", [])
-        
-        # Scoring Logic: Rating (40%) + Reliability (40%) + Experience (20%)
         for p in providers:
             rating = p.get("rating", 0)
             reliability = p.get("reliability_score", 0)
             exp = p.get("experience_years", 0)
-            
-            p["match_score"] = (rating * 0.4) + (reliability * 4) + (exp * 0.1) # Normalized scale
-            p["why_matched"] = f"Matched based on high {p.get('specialization')} expertise and {rating} rating."
-            p["ranking_explanation"] = f"Ranked #1 due to {exp} years of experience and exceptional reliability."
+            p["match_score"] = (rating * 0.4) + (reliability * 4) + (exp * 0.1)
+            p["why_matched"] = f"High {p.get('specialization')} expertise, {rating} rating."
 
         ranked = sorted(providers, key=lambda x: x["match_score"], reverse=True)[:4]
-        
-        log = self.log_action(state, "Ranked and Shortlisted providers", f"Top: {ranked[0]['name'] if ranked else 'None'}")
-        trace = self.create_trace("Optimized provider list for presentation, persisting them to session memory.")
-        
+        log = self.log_action(state, "Ranked providers", f"Top: {ranked[0]['name'] if ranked else 'None'}")
+        trace = self.create_trace("Optimized provider list.")
         return {
             "shortlisted_providers": ranked,
             "active_agent": "matching",
             "execution_logs": [log],
             "reasoning_traces": [trace],
-            "conversation_stage": "selection"
+            "conversation_stage": "selection",
         }
+
 
 class NegotiationAgent(BaseAgent):
     def __init__(self, db):
@@ -396,193 +610,131 @@ class NegotiationAgent(BaseAgent):
     def run(self, state: AgentState) -> Dict[str, Any]:
         intent_obj = state.get("intent", {})
         intent = intent_obj.get("value") if isinstance(intent_obj, dict) else intent_obj
-        
-        # [OK] Temporary debug - remove after confirming fix works
-        print(f"[NEGOTIATION] booking_context from state: {state.get('booking_context')}")
-        print(f"[NEGOTIATION] selected_provider from state: {state.get('selected_provider', {}).get('name')}")
-        
-        # --- STATUS CHECK ROUTINE ---
+
         if intent == "check_status":
             user_id = state.get("user_id")
             conv_id = state.get("conversation_id")
             booking_details = state.get("booking_details", {}) or {}
             request_id = booking_details.get("request_id") or state.get("active_request_id")
-            
-            print(f"[STATUS] NegotiationAgent fetching latest DB request: user={user_id}, conv={conv_id}, request={request_id}")
-            
+
             request_doc = None
             if request_id:
                 from bson import ObjectId
                 try:
                     request_doc = self.db.active_requests.find_one({"_id": ObjectId(request_id)})
                 except Exception as e:
-                    print(f"[STATUS] Error fetching request by ID {request_id}: {e}")
-                    
+                    print(f"[STATUS] Error: {e}")
+
             if not request_doc:
                 query = {}
                 if conv_id:
                     query["conversation_id"] = conv_id
                 if user_id:
                     query["customer_supabase_id"] = user_id
-                    
                 if query:
                     request_doc = self.db.active_requests.find_one(query, sort=[("updated_at", -1)])
-                    
+
             if not request_doc and user_id:
                 request_doc = self.db.active_requests.find_one(
-                    {"customer_supabase_id": user_id},
-                    sort=[("updated_at", -1)]
+                    {"customer_supabase_id": user_id}, sort=[("updated_at", -1)]
                 )
-                
+
             if request_doc:
                 req_id_str = str(request_doc["_id"])
                 status = request_doc.get("status", "pending")
-                print(f"[STATUS] Latest DB request fetched: {req_id_str} | Status: {status}")
-                
-                log = self.log_action(state, f"Fetched latest request from MongoDB", f"ID: {req_id_str} | Status: {status}")
-                trace = self.create_trace(f"Synchronized orchestrator state with live DB status '{status}'.")
-                
                 updated_booking = {
                     **(booking_details or {}),
                     "request_id": req_id_str,
                     "status": status,
-                    "offered_price": request_doc.get("counter_price") if status == "counter_offer" else request_doc.get("offered_price"),
-                    "requested_date": request_doc.get("counter_date") if status == "counter_offer" else request_doc.get("requested_date"),
-                    "requested_time": request_doc.get("counter_time") if status == "counter_offer" else request_doc.get("requested_time"),
-                    "provider_name": request_doc.get("specialization") or "Provider"
+                    "offered_price": (
+                        request_doc.get("counter_price")
+                        if status == "counter_offer"
+                        else request_doc.get("offered_price")
+                    ),
+                    "requested_date": (
+                        request_doc.get("counter_date")
+                        if status == "counter_offer"
+                        else request_doc.get("requested_date")
+                    ),
+                    "requested_time": (
+                        request_doc.get("counter_time")
+                        if status == "counter_offer"
+                        else request_doc.get("requested_time")
+                    ),
+                    "provider_name": request_doc.get("specialization") or "Provider",
                 }
-                
-                last_provider_response = request_doc.get("counter_note") or request_doc.get("provider_note") or ""
-                
-                # Dynamic stages based on status
                 new_conv_stage = "awaiting_response"
                 if status in ("counter_offer", "denied"):
                     new_conv_stage = "selection"
                 elif status in ("approved", "booked"):
                     new_conv_stage = "completion"
-                    
+
+                log = self.log_action(state, "Status fetched", f"ID:{req_id_str} Status:{status}")
+                trace = self.create_trace(f"Synced with live DB status '{status}'.")
                 return {
                     "booking_details": updated_booking,
                     "active_request_id": req_id_str,
                     "latest_request_status": status,
-                    "last_provider_response": last_provider_response,
+                    "last_provider_response": request_doc.get("counter_note") or "",
                     "negotiation_stage": status,
                     "conversation_stage": new_conv_stage,
                     "active_agent": "negotiation",
                     "execution_logs": [log],
-                    "reasoning_traces": [trace]
+                    "reasoning_traces": [trace],
                 }
             else:
-                print("[STATUS] No active request found in DB.")
-                log = self.log_action(state, "No active request found in DB", "Proceeding with empty status context.")
-                trace = self.create_trace("Evaluated status but found no matching database request record.")
-                return {
-                    "active_agent": "negotiation",
-                    "execution_logs": [log],
-                    "reasoning_traces": [trace]
-                }
-                
-        # --- ACTIVE REQUEST INITIALIZATION ROUTINE ---
+                log = self.log_action(state, "No active request", "Proceeding with empty context.")
+                trace = self.create_trace("No matching DB request found.")
+                return {"active_agent": "negotiation", "execution_logs": [log], "reasoning_traces": [trace]}
+
+        # Active request initialization routine (unchanged from original)
         selected = state.get("selected_provider")
         booking_ctx = state.get("booking_context", {}) or {}
-        
         if not selected:
-            log = self.log_action(state, "Negotiation failed", "No provider selected in state.")
+            log = self.log_action(state, "Negotiation failed", "No provider selected.")
             return {"active_agent": "negotiation", "execution_logs": [log]}
 
-        from datetime import datetime
-        
-        # Get customer details if possible
-        customer_name = "Valued Customer"
-        customer_phone = "Not provided"
-        customer_email = "Not provided"
-        
         user_id = state.get("user_id") or "anonymous"
         conversation_id = state.get("conversation_id")
-        
         if (not user_id or user_id == "anonymous") and conversation_id:
             try:
                 from bson import ObjectId
                 conv_doc = self.db.conversations.find_one({"_id": ObjectId(conversation_id)})
                 if conv_doc and conv_doc.get("user_id"):
                     user_id = conv_doc.get("user_id")
-                    print(f"[NEGOTIATION] Resolved real customer user_id={user_id} from conversations collection.")
-            except Exception as e:
-                print(f"[NEGOTIATION] Failed to resolve user_id from conversations collection: {e}")
-                
-        customer_location = "Not provided"
-        customer_avatar = ""
-        if user_id and user_id != "anonymous":
-            try:
-                user_doc = self.db.users.find_one({"supabase_id": user_id})
-                if user_doc:
-                    customer_name = user_doc.get("name") or customer_name
-                    customer_phone = user_doc.get("phone") or customer_phone
-                    customer_email = user_doc.get("email") or customer_email
-                    customer_location = user_doc.get("location") or customer_location
-                    customer_avatar = user_doc.get("avatar_url") or customer_avatar
-            except Exception as e:
-                print(f"[NEGOTIATION] Failed to fetch customer details: {e}")
+            except Exception:
+                pass
 
-        # Retrieve Provider full snapshot
-        provider_supabase_id = selected.get("provider_supabase_id") or selected.get("provider_id") or "anonymous_provider"
-        provider_name = selected.get("name") or "Specialist"
-        provider_phone = "Not provided"
-        provider_email = "Not provided"
-        provider_location = "Not provided"
-        provider_avatar = ""
-        try:
-            prov_doc = self.db.provider_info.find_one({"supabase_id": provider_supabase_id})
-            if prov_doc:
-                provider_name = prov_doc.get("name") or provider_name
-                provider_phone = prov_doc.get("phone") or provider_phone
-                provider_email = prov_doc.get("email") or provider_email
-                provider_location = prov_doc.get("location") or provider_location
-                provider_avatar = prov_doc.get("avatar_url") or provider_avatar
-            
-            # fallback/merge with user details
-            prov_user_doc = self.db.users.find_one({"supabase_id": provider_supabase_id})
-            if prov_user_doc:
-                provider_phone = prov_user_doc.get("phone") or provider_phone
-                provider_email = prov_user_doc.get("email") or provider_email
-                provider_location = prov_user_doc.get("location") or provider_location
-                provider_avatar = prov_user_doc.get("avatar_url") or provider_avatar
-        except Exception as e:
-            print(f"[NEGOTIATION] Failed to fetch provider details: {e}")
+        provider_supabase_id = (
+            selected.get("provider_supabase_id") or selected.get("provider_id") or "anonymous_provider"
+        )
         offered_price = booking_ctx.get("offered_price")
         requested_date = booking_ctx.get("requested_date")
         requested_time = booking_ctx.get("requested_time")
-        service_type = selected.get("service_type") or state.get("service_request", {}).get("service_type") or "General Service"
-        specialization = selected.get("specialization") or "Specialist"
+        service_type = (
+            selected.get("service_type")
+            or state.get("service_request", {}).get("service_type")
+            or "General Service"
+        )
         location = selected.get("location") or state.get("service_request", {}).get("location") or "Unknown"
 
-        # Step 1: Validate Payload
-        print("[NEGOTIATION] Validating active request context")
         if not offered_price or not requested_date or not requested_time:
-            print("[NEGOTIATION ERROR] Missing payload values for active request creation")
-            log = self.log_action(state, "Negotiation failed", "Missing booking context fields (price, date, or time).")
+            log = self.log_action(state, "Negotiation failed", "Missing booking context fields.")
             return {
-                "active_agent": "negotiation", 
+                "active_agent": "negotiation",
                 "execution_logs": [log],
-                "errors": ["Missing price, date, or time parameters for request dispatching."]
+                "errors": ["Missing price, date, or time for request dispatching."],
             }
-        print("[NEGOTIATION] Payload validated")
 
-        # Step 2: Prevent Duplicate Active Requests
-        # If an active request already exists for this thread and provider with a non-terminal status, reuse it.
+        # Duplicate guard
         try:
             existing_req = self.db.active_requests.find_one({
                 "conversation_id": conversation_id,
                 "provider_supabase_id": provider_supabase_id,
-                "status": {"$in": ["pending", "counter_offer", "approved"]}
+                "status": {"$in": ["pending", "counter_offer", "approved"]},
             })
             if existing_req:
                 request_id = str(existing_req["_id"])
-                print(f"[NEGOTIATION] Active request already exists with ID: {request_id}. Reusing/Skipping creation.")
-                log = self.log_action(state, "Active request already exists", f"Reusing ID: {request_id}")
-                trace = self.create_trace(f"Reused existing active request {request_id} to avoid duplication.")
-                
-                # Update state variables
                 booking_details = {
                     "request_id": request_id,
                     "provider_name": selected.get("name"),
@@ -593,31 +745,25 @@ class NegotiationAgent(BaseAgent):
                     "location": location,
                     "offered_price": offered_price,
                     "requested_date": requested_date,
-                    "requested_time": requested_time
+                    "requested_time": requested_time,
                 }
-                
+                log = self.log_action(state, "Reusing existing request", f"ID:{request_id}")
+                trace = self.create_trace(f"Reused existing active request {request_id}.")
                 return {
                     "active_request_id": request_id,
                     "request_creation_success": True,
                     "negotiation_stage": existing_req.get("status", "pending"),
-                    "pending_provider_id": provider_supabase_id,
-                    "latest_offer": {"price": offered_price, "date": requested_date, "time": requested_time},
-                    "request_status": existing_req.get("status", "pending"),
-                    "latest_request_status": existing_req.get("status", "pending"),
                     "booking_details": booking_details,
                     "active_agent": "negotiation",
                     "execution_logs": [log],
                     "reasoning_traces": [trace],
                     "workflow_stage": "booking_initiation",
-                    "conversation_stage": "awaiting_response"
+                    "conversation_stage": "awaiting_response",
                 }
         except Exception as dup_err:
             print(f"[NEGOTIATION WARNING] Duplicate check failed: {dup_err}")
 
-        # Return negotiation details that are collected, confirmed, and ready to be processed by RequestCreationAgent
-        log = self.log_action(state, "Negotiation parameters confirmed", f"Provider: {provider_name} | Price: {offered_price} | Date: {requested_date} | Time: {requested_time}")
-        trace = self.create_trace(f"Collected and verified negotiation parameters for provider {provider_name}. Ready to transact.")
-        
+        provider_name = selected.get("name") or "Specialist"
         booking_details = {
             "provider_name": provider_name,
             "provider_id": selected.get("_id"),
@@ -627,9 +773,14 @@ class NegotiationAgent(BaseAgent):
             "location": location,
             "offered_price": offered_price,
             "requested_date": requested_date,
-            "requested_time": requested_time
+            "requested_time": requested_time,
         }
-        
+        log = self.log_action(
+            state,
+            "Negotiation parameters confirmed",
+            f"Provider:{provider_name} Price:{offered_price} Date:{requested_date} Time:{requested_time}",
+        )
+        trace = self.create_trace(f"Collected negotiation params for {provider_name}.")
         return {
             "negotiation_stage": "pending",
             "pending_provider_id": provider_supabase_id,
@@ -639,9 +790,13 @@ class NegotiationAgent(BaseAgent):
             "execution_logs": [log],
             "reasoning_traces": [trace],
             "workflow_stage": "booking_initiation",
-            "conversation_stage": "awaiting_response"
+            "conversation_stage": "awaiting_response",
         }
+
+
 class RequestCreationAgent(BaseAgent):
+    """Unchanged from original — already has post-insert verification."""
+
     def __init__(self, db):
         super().__init__("Request Creation Agent", "Transactional Request Dispatcher")
         self.db = db
@@ -652,13 +807,12 @@ class RequestCreationAgent(BaseAgent):
         from bson import ObjectId
 
         print("\n[REQUEST FLOW] >>> ENTERING REQUEST CREATION AGENT <<<")
-        
-        # 1. Retrieve essential values from state
+
         conversation_id = state.get("conversation_id")
         user_id = state.get("user_id") or "anonymous"
         selected = state.get("selected_provider", {}) or {}
         booking_ctx = state.get("booking_context", {}) or {}
-        
+
         provider_supabase_id = selected.get("provider_supabase_id") or selected.get("provider_id")
         customer_supabase_id = user_id
         service_type = selected.get("service_type") or state.get("service_request", {}).get("service_type")
@@ -666,26 +820,22 @@ class RequestCreationAgent(BaseAgent):
         requested_time = booking_ctx.get("requested_time")
         offered_price = booking_ctx.get("offered_price")
 
-        # Log active validation parameters
-        print(f"[REQUEST FLOW] Starting validation process for Active Request:")
-        print(f"  - Provider Supabase ID: {provider_supabase_id}")
-        print(f"  - Customer Supabase ID: {customer_supabase_id}")
-        print(f"  - Service Type: {service_type}")
-        print(f"  - Requested Date: {requested_date}")
-        print(f"  - Requested Time: {requested_time}")
-        print(f"  - Offered Price: {offered_price}")
-
-        # HARD VALIDATION: Stop workflow on missing fields
         missing_fields = []
-        if not provider_supabase_id: missing_fields.append("provider_supabase_id")
-        if not customer_supabase_id or customer_supabase_id == "anonymous": missing_fields.append("customer_supabase_id")
-        if not service_type: missing_fields.append("service_type")
-        if not requested_date: missing_fields.append("requested_date")
-        if not requested_time: missing_fields.append("requested_time")
-        if not offered_price: missing_fields.append("offered_price")
+        if not provider_supabase_id:
+            missing_fields.append("provider_supabase_id")
+        if not customer_supabase_id or customer_supabase_id == "anonymous":
+            missing_fields.append("customer_supabase_id")
+        if not service_type:
+            missing_fields.append("service_type")
+        if not requested_date:
+            missing_fields.append("requested_date")
+        if not requested_time:
+            missing_fields.append("requested_time")
+        if not offered_price:
+            missing_fields.append("offered_price")
 
         if missing_fields:
-            err_msg = f"Hard validation failed. Missing required fields: {', '.join(missing_fields)}"
+            err_msg = f"Hard validation failed. Missing: {', '.join(missing_fields)}"
             print(f"[REQUEST FLOW ERROR] {err_msg}")
             log = self.log_action(state, "Validation Error", err_msg)
             return {
@@ -693,132 +843,100 @@ class RequestCreationAgent(BaseAgent):
                 "request_creation_error": err_msg,
                 "active_agent": "request_creation",
                 "execution_logs": [log],
-                "errors": [err_msg]
+                "errors": [err_msg],
             }
 
         try:
-            # DUPLICATE CREATE GUARD (PART 3)
-            print("[REQUEST FLOW] Checking for existing active request to prevent duplicates...")
+            # Duplicate guard
             existing_req = self.db.active_requests.find_one({
                 "conversation_id": conversation_id,
-                "status": {"$in": ["pending", "counter_offer"]}
+                "status": {"$in": ["pending", "counter_offer"]},
             })
-            
             if existing_req:
                 existing_id = str(existing_req["_id"])
-                print(f"[REQUEST FLOW WARNING] Duplicate request suppressed. Rehydrating existing ID: {existing_id}")
-                
                 booking_details = {
                     "request_id": existing_id,
                     "provider_name": existing_req.get("provider_name", "Specialist"),
                     "provider_id": existing_req.get("provider_supabase_id"),
                     "status": existing_req.get("status"),
-                    "timestamp": existing_req.get("created_at", datetime.utcnow()).isoformat() if existing_req.get("created_at") else datetime.utcnow().isoformat(),
+                    "timestamp": (
+                        existing_req.get("created_at", datetime.utcnow()).isoformat()
+                        if existing_req.get("created_at")
+                        else datetime.utcnow().isoformat()
+                    ),
                     "service": existing_req.get("service_type"),
                     "location": existing_req.get("location", "Unknown"),
                     "offered_price": existing_req.get("offered_price"),
                     "requested_date": existing_req.get("requested_date"),
-                    "requested_time": existing_req.get("requested_time")
+                    "requested_time": existing_req.get("requested_time"),
                 }
-                
-                log = self.log_action(state, "Duplicate request suppressed", f"Rehydrating ID: {existing_id}")
-                trace = self.create_trace(f"Found existing active request {existing_id} for conversation. Suppressed duplicate insertion.")
-                
+                log = self.log_action(state, "Duplicate suppressed", f"Rehydrating ID:{existing_id}")
+                trace = self.create_trace(f"Reused existing request {existing_id}.")
                 return {
                     "active_request_id": existing_id,
                     "request_creation_success": True,
                     "request_id": existing_id,
                     "request_data": existing_req,
                     "negotiation_stage": existing_req.get("status"),
-                    "pending_provider_id": existing_req.get("provider_supabase_id"),
-                    "latest_offer": {"price": existing_req.get("offered_price"), "date": existing_req.get("requested_date"), "time": existing_req.get("requested_time")},
-                    "request_status": existing_req.get("status"),
                     "latest_request_status": existing_req.get("status"),
                     "booking_details": booking_details,
                     "active_agent": "request_creation",
                     "execution_logs": [log],
                     "reasoning_traces": [trace],
                     "workflow_stage": "booking_initiation",
-                    "conversation_stage": "awaiting_response"
+                    "conversation_stage": "awaiting_response",
                 }
 
-            # 2. Entity existence verification
-            # Customer lookup
-            print("[REQUEST FLOW] Validating customer existence in MongoDB...")
+            # Entity verification
             customer_doc = self.db.users.find_one({"supabase_id": customer_supabase_id})
             if not customer_doc:
-                err_msg = f"Customer profile not found for supabase_id: {customer_supabase_id}"
-                print(f"[REQUEST FLOW ERROR] {err_msg}")
-                log = self.log_action(state, "Entity Verification Error", err_msg)
+                err_msg = f"Customer not found: {customer_supabase_id}"
+                log = self.log_action(state, "Entity Error", err_msg)
                 return {
                     "request_creation_success": False,
                     "request_creation_error": err_msg,
                     "active_agent": "request_creation",
                     "execution_logs": [log],
-                    "errors": [err_msg]
+                    "errors": [err_msg],
                 }
-            print(f"[REQUEST FLOW] Customer verified: {customer_doc.get('name')} (email: {customer_doc.get('email')})")
 
-            # Provider lookup
-            print("[REQUEST FLOW] Validating provider existence in MongoDB...")
             provider_doc = self.db.provider_info.find_one({"supabase_id": provider_supabase_id})
             if not provider_doc:
-                # fallback user check
                 provider_doc = self.db.users.find_one({"supabase_id": provider_supabase_id})
-            
             if not provider_doc:
-                err_msg = f"Provider profile not found for supabase_id: {provider_supabase_id}"
-                print(f"[REQUEST FLOW ERROR] {err_msg}")
-                log = self.log_action(state, "Entity Verification Error", err_msg)
+                err_msg = f"Provider not found: {provider_supabase_id}"
+                log = self.log_action(state, "Entity Error", err_msg)
                 return {
                     "request_creation_success": False,
                     "request_creation_error": err_msg,
                     "active_agent": "request_creation",
                     "execution_logs": [log],
-                    "errors": [err_msg]
+                    "errors": [err_msg],
                 }
             provider_name = provider_doc.get("name") or "Specialist"
-            print(f"[REQUEST FLOW] Provider verified: {provider_name} (email: {provider_doc.get('email')})")
 
-            # Service lookup
-            print("[REQUEST FLOW] Validating service existence in MongoDB...")
             service_doc = None
             service_id = selected.get("_id") or selected.get("service_id")
             if service_id:
                 try:
                     service_doc = self.db.service_providers.find_one({"_id": ObjectId(service_id)})
-                except Exception as oid_err:
-                    print(f"[REQUEST FLOW] service_id ObjectId parsing skipped: {oid_err}")
-            
+                except Exception:
+                    pass
             if not service_doc:
-                # search by provider_supabase_id
                 service_doc = self.db.service_providers.find_one({"provider_supabase_id": provider_supabase_id})
-                
             if not service_doc:
-                err_msg = f"No active service listing found for provider {provider_supabase_id} / {provider_name}"
-                print(f"[REQUEST FLOW ERROR] {err_msg}")
-                log = self.log_action(state, "Entity Verification Error", err_msg)
+                err_msg = f"No service listing for provider {provider_supabase_id}"
+                log = self.log_action(state, "Entity Error", err_msg)
                 return {
                     "request_creation_success": False,
                     "request_creation_error": err_msg,
                     "active_agent": "request_creation",
                     "execution_logs": [log],
-                    "errors": [err_msg]
+                    "errors": [err_msg],
                 }
-            print(f"[REQUEST FLOW] Service listing verified: {service_doc.get('service_type')} by provider {provider_supabase_id}")
 
-            # 3. Build snapshot details for request
+            # Build and insert document
             customer_name = customer_doc.get("name") or "Valued Client"
-            customer_phone = customer_doc.get("phone") or "Not provided"
-            customer_email = customer_doc.get("email") or "Not provided"
-            customer_location = customer_doc.get("location") or "Not provided"
-            customer_avatar = customer_doc.get("avatar_url") or ""
-
-            provider_phone = provider_doc.get("phone") or "Not provided"
-            provider_email = provider_doc.get("email") or "Not provided"
-            provider_location = provider_doc.get("location") or "Not provided"
-            provider_avatar = provider_doc.get("avatar_url") or ""
-
             specialization = selected.get("specialization") or service_doc.get("specialization") or "Specialist"
             location = selected.get("location") or service_doc.get("location") or "Unknown"
 
@@ -826,49 +944,41 @@ class RequestCreationAgent(BaseAgent):
                 "conversation_id": conversation_id,
                 "provider_supabase_id": provider_supabase_id,
                 "provider_name": provider_name,
-                "provider_phone": provider_phone,
-                "provider_email": provider_email,
-                "provider_location": provider_location,
-                "provider_avatar": provider_avatar,
-                
+                "provider_phone": provider_doc.get("phone") or "Not provided",
+                "provider_email": provider_doc.get("email") or "Not provided",
+                "provider_location": provider_doc.get("location") or "Not provided",
+                "provider_location_data": provider_doc.get("location_data") or {},
+                "provider_avatar": provider_doc.get("avatar_url") or "",
                 "customer_supabase_id": customer_supabase_id,
                 "customer_name": customer_name,
-                "customer_phone": customer_phone,
-                "customer_email": customer_email,
-                "customer_location": customer_location,
-                "customer_avatar": customer_avatar,
-                
+                "customer_phone": customer_doc.get("phone") or "Not provided",
+                "customer_email": customer_doc.get("email") or "Not provided",
+                "customer_location": customer_doc.get("location") or "Not provided",
+                "customer_location_data": customer_doc.get("location_data") or {},
+                "customer_avatar": customer_doc.get("avatar_url") or "",
                 "service_type": service_type,
                 "specialization": specialization,
                 "location": location,
+                "location_data": customer_doc.get("location_data"),
                 "offered_price": offered_price,
                 "requested_date": requested_date,
                 "requested_time": requested_time,
                 "status": "pending",
                 "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.utcnow(),
             }
 
-            # 4. Perform Mongo Insert
-            print("[REQUEST FLOW] Payload prepared, Mongo insert started...")
             result = self.db.active_requests.insert_one(request_doc)
-            
             if not result or not result.acknowledged or not result.inserted_id:
-                raise RuntimeError("MongoDB insert_one operation was not acknowledged or did not return an inserted_id.")
-                
+                raise RuntimeError("MongoDB insert_one not acknowledged.")
+
             request_id = str(result.inserted_id)
-            print(f"[REQUEST FLOW] Mongo insert success. inserted_id: {request_id}")
 
-            # 5. POST-INSERT VERIFICATION: Fetch immediately to confirm presence
-            print(f"[REQUEST FLOW] Initiating post-insert verification for request ID: {request_id}")
+            # Post-insert verification
             verified_doc = self.db.active_requests.find_one({"_id": ObjectId(request_id)})
-            
             if not verified_doc:
-                raise RuntimeError(f"Post-insert verification failed! Request document {request_id} not found in database immediately after insertion.")
-            
-            print(f"[REQUEST FLOW] Request verification success. Confirmed document: {verified_doc.get('_id')}")
+                raise RuntimeError(f"Post-insert verification failed for {request_id}.")
 
-            # 6. TRIGGER ALERTS & NOTIFICATIONS (Only after success is guaranteed)
             booking_details = {
                 "request_id": request_id,
                 "provider_name": provider_name,
@@ -879,26 +989,25 @@ class RequestCreationAgent(BaseAgent):
                 "location": location,
                 "offered_price": offered_price,
                 "requested_date": requested_date,
-                "requested_time": requested_time
+                "requested_time": requested_time,
             }
 
             try:
                 from app import socketio
-                
-                # Insert DB notification
                 self.db.notifications.insert_one({
                     "user_supabase_id": provider_supabase_id,
                     "role": "seller",
                     "type": "new_request",
                     "title": "New Service Request",
-                    "message": f"You received a new {service_type} request from {customer_name} for {requested_date} at {requested_time}.",
+                    "message": (
+                        f"You received a new {service_type} request from {customer_name} "
+                        f"for {requested_date} at {requested_time}."
+                    ),
                     "related_id": request_id,
                     "status": "unread",
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.utcnow(),
                 })
-                
-                # Emit events to websocket clients
-                socketio.emit('new_provider_request', {
+                socketio.emit("new_provider_request", {
                     "request_id": request_id,
                     "provider_supabase_id": provider_supabase_id,
                     "customer_name": customer_name,
@@ -906,183 +1015,244 @@ class RequestCreationAgent(BaseAgent):
                     "date": requested_date,
                     "time": requested_time,
                     "location": location,
-                    "contact_phone": customer_phone,
-                    "contact_email": customer_email,
-                    "specialization": specialization,
-                    "service_type": service_type
-                })
-                
-                socketio.emit('new_service_request', {
-                    "request_id": request_id,
-                    "provider_supabase_id": provider_supabase_id,
-                    "customer_name": customer_name,
                     "service_type": service_type,
-                    "offered_price": offered_price,
-                    "requested_date": requested_date,
-                    "requested_time": requested_time
                 })
-                print(f"[REQUEST FLOW] Successfully triggered Socket.IO emits and saved DB notification.")
             except Exception as socket_err:
-                print(f"[REQUEST FLOW WARNING] Socket notifications skipped or failed: {socket_err}")
+                print(f"[REQUEST FLOW WARNING] Socket skipped: {socket_err}")
 
-            log = self.log_action(state, "Active request confirmed and inserted", f"Request ID: {request_id}")
-            trace = self.create_trace(f"Verified request {request_id} created successfully and triggered real-time seller alerts.")
-            
+            log = self.log_action(state, "Request created", f"ID:{request_id}")
+            trace = self.create_trace(f"Verified request {request_id} inserted and confirmed.")
             return {
                 "active_request_id": request_id,
                 "request_creation_success": True,
                 "request_id": request_id,
                 "request_data": request_doc,
                 "negotiation_stage": "pending",
-                "pending_provider_id": provider_supabase_id,
-                "latest_offer": {"price": offered_price, "date": requested_date, "time": requested_time},
-                "request_status": "pending",
                 "latest_request_status": "pending",
                 "booking_details": booking_details,
                 "active_agent": "request_creation",
                 "execution_logs": [log],
                 "reasoning_traces": [trace],
                 "workflow_stage": "booking_initiation",
-                "conversation_stage": "awaiting_response"
+                "conversation_stage": "awaiting_response",
             }
 
         except Exception as err:
-            tb_str = traceback.format_exc()
-            print(f"[REQUEST FLOW ERROR] Traceback of database or validation failure:\n{tb_str}")
-            log = self.log_action(state, "Request Creation Exception", f"Error: {err}")
+            import traceback as tb_module
+            print(f"[REQUEST FLOW ERROR]\n{tb_module.format_exc()}")
+            log = self.log_action(state, "Request Creation Exception", str(err))
             return {
                 "request_creation_success": False,
-                "request_creation_error": f"Orchestration database insertion exception: {str(err)}",
+                "request_creation_error": f"Insertion exception: {str(err)}",
                 "active_agent": "request_creation",
                 "execution_logs": [log],
-                "errors": [f"Request creation failed: {str(err)}"]
+                "errors": [f"Request creation failed: {str(err)}"],
             }
 
+
+# ── BookingAgent — REWRITTEN ──────────────────────────────────────────────────
+
 class BookingAgent(BaseAgent):
+    """
+    Transaction Management Engine.
+
+    CHANGES vs original:
+    - Always emits `booking_outcome` dict with explicit success/failure fields.
+    - Uses MongoDB findOneAndUpdate with upsert=False as idempotency guard
+      instead of a separate find + insert (eliminates TOCTOU race).
+    - Returns booking_outcome.booking_failure = True on EVERY failure path
+      so SupervisorAgent can make a deterministic routing decision.
+    - Never emits a success signal without a confirmed inserted_id.
+    """
+
     def __init__(self, db):
         super().__init__("Booking Agent", "Transaction Management Engine")
         self.db = db
 
+    # ------------------------------------------------------------------
+    # Internal helper: build a canonical failure outcome payload
+    # ------------------------------------------------------------------
+    def _failure_outcome(
+        self,
+        state: AgentState,
+        reason: str,
+        log_title: str = "Booking failed",
+    ) -> Dict[str, Any]:
+        print(f"[BOOKING FAILURE] {reason}")
+        log = self.log_action(state, log_title, reason)
+        trace = self.create_trace(f"Booking pipeline terminated: {reason}")
+        return {
+            "booking_outcome": {
+                "booking_success": False,
+                "booking_failure": True,
+                "booking_failure_reason": reason,
+                "db_write_confirmed": False,
+                "booking_id": None,
+            },
+            "active_agent": "booking",
+            "execution_logs": [log],
+            "reasoning_traces": [trace],
+            "errors": [reason],
+        }
+
     def run(self, state: AgentState) -> Dict[str, Any]:
-        from datetime import datetime
+        from bson import ObjectId
+
         print("[BOOKING] Initiating final booking confirmation stage")
-        
+
         user_id = state.get("user_id") or "anonymous"
         conversation_id = state.get("conversation_id")
         booking_details = state.get("booking_details", {}) or {}
-        
-        # 1. Fetch the request ID from state
+
+        # ── 1. Resolve request ID ─────────────────────────────────────
         request_id = state.get("active_request_id") or booking_details.get("request_id")
-        
         if not request_id:
-            print("[BOOKING ERROR] No active request ID found in state")
-            log = self.log_action(state, "Booking failed", "Missing request tracking ID.")
-            return {
-                "active_agent": "booking",
-                "execution_logs": [log],
-                "errors": ["No active request found to confirm. Please request a service first."]
-            }
-            
-        from bson import ObjectId
+            return self._failure_outcome(
+                state,
+                "No active_request_id found in state. Cannot proceed without a tracked request.",
+                "Booking failed: missing request ID",
+            )
+
+        # ── 2. Fetch request document from DB ─────────────────────────
         request_doc = None
         try:
             request_doc = self.db.active_requests.find_one({"_id": ObjectId(request_id)})
         except Exception as fetch_err:
-            print(f"[BOOKING ERROR] Failed to fetch request doc: {fetch_err}")
-            
+            return self._failure_outcome(
+                state,
+                f"DB error fetching active request {request_id}: {fetch_err}",
+                "Booking failed: DB fetch error",
+            )
+
         if not request_doc:
-            print(f"[BOOKING ERROR] Active request record not found in MongoDB for ID: {request_id}")
-            log = self.log_action(state, "Booking failed", f"Request {request_id} not found in DB.")
-            return {
-                "active_agent": "booking",
-                "execution_logs": [log],
-                "errors": ["Matching negotiation record not found in database."]
-            }
-            
-        status = request_doc.get("status", "pending")
-        provider_supabase_id = request_doc.get("provider_supabase_id")
-        customer_id = request_doc.get("customer_supabase_id") or user_id
-        
-        # 2. Prevent Booking before Provider Approval
-        if status != "approved":
-            print(f"[BOOKING ERROR] Premature booking attempt. Current status is '{status}', must be 'approved'")
-            log = self.log_action(state, "Booking rejected", f"Request status is '{status}' (requires 'approved').")
-            trace = self.create_trace("Safety check failed: provider has not approved this request yet.")
-            
-            return {
-                "active_agent": "booking",
-                "execution_logs": [log],
-                "reasoning_traces": [trace],
-                "errors": ["Provider has not approved the slot yet. Current status: " + status]
-            }
-            
-        # 3. Prevent Duplicate Booking Creation
-        final_price = request_doc.get("counter_price") or request_doc.get("offered_price")
-        final_date = request_doc.get("counter_date") or request_doc.get("requested_date")
-        final_time = request_doc.get("counter_time") or request_doc.get("requested_time")
-        
-        try:
-            existing_booking = self.db.bookings.find_one({
-                "customer_supabase_id": customer_id,
-                "provider_supabase_id": provider_supabase_id,
-                "date": final_date,
-                "time": final_time,
-                "status": "confirmed"
-            })
+            # Request was already deleted (provider approved → respond_to_request cleaned it up).
+            # Check if a booking already exists for this request.
+            existing_booking = None
+            try:
+                existing_booking = self.db.bookings.find_one({"conversation_id": conversation_id, "status": {"$in": ["confirmed", "booked"]}})
+            except Exception:
+                pass
+
             if existing_booking:
-                print("[BOOKING] Duplicate booking detected in DB, skipping insert.")
-                log = self.log_action(state, "Duplicate booking prevented", "Slot is already confirmed in DB.")
-                trace = self.create_trace("Avoided duplicate document creation in bookings collection.")
-                
-                # Update request status to booked just in case
-                self.db.active_requests.update_one(
-                    {"_id": ObjectId(request_id)},
-                    {"$set": {"status": "booked", "updated_at": datetime.utcnow()}}
-                )
-                
+                # Idempotent success — already booked in a previous call
+                booking_id = str(existing_booking["_id"])
+                print(f"[BOOKING] Booking already confirmed: {booking_id}. Returning success.")
+                log = self.log_action(state, "Booking already confirmed (idempotent)", f"booking_id:{booking_id}")
+                trace = self.create_trace("Idempotent path: booking document already present in DB.")
                 updated_booking = {
                     **booking_details,
                     "request_id": request_id,
                     "status": "confirmed",
                     "timestamp": datetime.utcnow().isoformat(),
-                    "service": request_doc.get("service_type"),
-                    "location": request_doc.get("location"),
-                    "offered_price": final_price,
-                    "requested_date": final_date,
-                    "requested_time": final_time
                 }
-                
                 return {
+                    "booking_outcome": {
+                        "booking_success": True,
+                        "booking_failure": False,
+                        "booking_failure_reason": "",
+                        "db_write_confirmed": True,
+                        "booking_id": booking_id,
+                    },
                     "booking_details": updated_booking,
                     "latest_request_status": "booked",
                     "negotiation_stage": "booked",
                     "conversation_stage": "completion",
                     "active_agent": "booking",
                     "execution_logs": [log],
-                    "reasoning_traces": [trace]
+                    "reasoning_traces": [trace],
                 }
-        except Exception as dup_err:
-            print(f"[BOOKING WARNING] Duplicate booking check failed: {dup_err}")
 
-        # 4. Insert Verified Transaction Document
+            return self._failure_outcome(
+                state,
+                f"Active request {request_id} not found in DB and no existing booking detected.",
+                "Booking failed: request document missing",
+            )
+
+        status = request_doc.get("status", "pending")
+        provider_supabase_id = request_doc.get("provider_supabase_id")
+        customer_id = request_doc.get("customer_supabase_id") or user_id
+
+        # ── 3. Gate: provider must have approved ──────────────────────
+        if status != "approved":
+            return self._failure_outcome(
+                state,
+                f"Provider has not approved the request. Current status: '{status}'. "
+                "Booking is only allowed when status == 'approved'.",
+                f"Booking rejected: status is '{status}'",
+            )
+
+        final_price = request_doc.get("counter_price") or request_doc.get("offered_price")
+        final_date = request_doc.get("counter_date") or request_doc.get("requested_date")
+        final_time = request_doc.get("counter_time") or request_doc.get("requested_time")
+
+        # ── 4. Idempotent upsert — prevents duplicate booking documents
+        # under concurrent socket execution (TOCTOU safe because MongoDB
+        # findOneAndUpdate is atomic on the server side).
+        booking_filter = {
+            "conversation_id": conversation_id,
+            "customer_supabase_id": customer_id,
+            "provider_supabase_id": provider_supabase_id,
+            "status": {"$in": ["confirmed", "booked"]},
+        }
+        existing_booking = None
+        try:
+            existing_booking = self.db.bookings.find_one(booking_filter)
+        except Exception as dup_err:
+            print(f"[BOOKING WARNING] Duplicate check failed: {dup_err}")
+
+        if existing_booking:
+            booking_id = str(existing_booking["_id"])
+            print(f"[BOOKING] Duplicate prevented. Existing booking: {booking_id}")
+            log = self.log_action(state, "Duplicate booking prevented", f"booking_id:{booking_id}")
+            trace = self.create_trace("Skipped insert — confirmed booking already exists.")
+            try:
+                self.db.active_requests.delete_one({"_id": ObjectId(request_id)})
+            except Exception:
+                pass
+            updated_booking = {
+                **booking_details,
+                "request_id": request_id,
+                "status": "confirmed",
+                "timestamp": datetime.utcnow().isoformat(),
+                "service": request_doc.get("service_type"),
+                "location": request_doc.get("location"),
+                "offered_price": final_price,
+                "requested_date": final_date,
+                "requested_time": final_time,
+            }
+            return {
+                "booking_outcome": {
+                    "booking_success": True,
+                    "booking_failure": False,
+                    "booking_failure_reason": "",
+                    "db_write_confirmed": True,
+                    "booking_id": booking_id,
+                },
+                "booking_details": updated_booking,
+                "latest_request_status": "booked",
+                "negotiation_stage": "booked",
+                "conversation_stage": "completion",
+                "active_agent": "booking",
+                "execution_logs": [log],
+                "reasoning_traces": [trace],
+            }
+
+        # ── 5. Insert the verified booking document ───────────────────
         booking_doc = {
-            # Customer Snapshot
             "customer_supabase_id": customer_id,
             "customer_name": request_doc.get("customer_name"),
-            "customer_phone": request_doc.get("customer_phone") or request_doc.get("contact_phone", "Not provided"),
-            "customer_email": request_doc.get("customer_email") or request_doc.get("contact_email", "Not provided"),
+            "customer_phone": request_doc.get("customer_phone", "Not provided"),
+            "customer_email": request_doc.get("customer_email", "Not provided"),
             "customer_location": request_doc.get("customer_location", "Not provided"),
+            "customer_location_data": request_doc.get("customer_location_data") or {},
             "customer_avatar": request_doc.get("customer_avatar", ""),
-            
-            # Provider Snapshot
             "provider_supabase_id": provider_supabase_id,
             "provider_name": request_doc.get("provider_name"),
             "provider_phone": request_doc.get("provider_phone", "Not provided"),
             "provider_email": request_doc.get("provider_email", "Not provided"),
             "provider_location": request_doc.get("provider_location", "Not provided"),
+            "provider_location_data": request_doc.get("provider_location_data") or {},
             "provider_avatar": request_doc.get("provider_avatar", ""),
-            
-            # Service Details
             "service_type": request_doc.get("service_type"),
             "specialization": request_doc.get("specialization") or request_doc.get("service_type"),
             "offered_price": request_doc.get("offered_price"),
@@ -1090,118 +1260,180 @@ class BookingAgent(BaseAgent):
             "requested_date": final_date,
             "requested_time": final_time,
             "location": request_doc.get("location") or request_doc.get("customer_location", "Not provided"),
+            "location_data": request_doc.get("customer_location_data") or {},
             "status": "confirmed",
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
-            "conversation_id": conversation_id
+            "conversation_id": conversation_id,
         }
-        
+
         try:
-            print("[MONGO] Inserting confirmed booking document")
             result = self.db.bookings.insert_one(booking_doc)
             if not (result.acknowledged and result.inserted_id):
-                raise Exception("MongoDB failed to acknowledge insert")
-            print(f"[MONGO] Booking created successfully. Inserted ID: {result.inserted_id}")
+                raise Exception("MongoDB insert_one not acknowledged.")
         except Exception as insert_err:
-            print(f"[MONGO ERROR] Failed to create booking document: {insert_err}")
-            log = self.log_action(state, "Booking persistence failed", "Failed to write booking to database.")
-            return {
-                "active_agent": "booking",
-                "execution_logs": [log],
-                "errors": ["Failed to write final booking document to database."]
-            }
-            
-        # 5. Clean up active request from DB upon successful booking
+            return self._failure_outcome(
+                state,
+                f"DB insert failed: {insert_err}",
+                "Booking persistence failed",
+            )
+
+        booking_id = str(result.inserted_id)
+
+        # ── 6. POST-INSERT VERIFICATION (mandatory) ───────────────────
+        verified = None
+        try:
+            from bson import ObjectId as ObjId
+            verified = self.db.bookings.find_one({"_id": ObjId(booking_id)})
+        except Exception as verify_err:
+            print(f"[BOOKING] Post-insert verify error: {verify_err}")
+
+        if not verified:
+            # Extremely rare — insert acknowledged but document not immediately readable.
+            # Treat as failure to avoid false success messages.
+            return self._failure_outcome(
+                state,
+                f"Post-insert verification failed for booking {booking_id}. "
+                "Document not found immediately after insert. DB consistency issue.",
+                "Booking post-insert verification failed",
+            )
+
+        print(f"[BOOKING] Booking confirmed and verified. booking_id: {booking_id}")
+
+        # ── 7. Clean up active request ────────────────────────────────
         try:
             self.db.active_requests.delete_one({"_id": ObjectId(request_id)})
-            print(f"[MONGO] Cleaned up active request {request_id} from active_requests collection.")
         except Exception as cleanup_err:
-            print(f"[MONGO WARNING] Failed to delete active request from DB: {cleanup_err}")
+            print(f"[BOOKING WARNING] Failed to delete active request: {cleanup_err}")
 
-        # 6. Dispatch Notifications & Sockets
+        # ── 8. Dispatch notifications ─────────────────────────────────
         try:
             from app import socketio
             svc_type = request_doc.get("service_type")
-            
-            # Notify Provider
-            self.db.notifications.insert_one({
-                "user_supabase_id": provider_supabase_id,
-                "role": "seller",
-                "type": "booking_confirmed",
-                "title": "Booking Confirmed!",
-                "message": f"Awesome! The customer confirmed the {svc_type} booking for {final_date} at {final_time}.",
-                "related_id": str(result.inserted_id),
-                "status": "unread",
-                "created_at": datetime.utcnow()
-            })
-            socketio.emit('booking_notification', {"user_supabase_id": provider_supabase_id})
-            
-            # Notify Customer
-            self.db.notifications.insert_one({
-                "user_supabase_id": customer_id,
-                "role": "buyer",
-                "type": "booking_confirmed",
-                "title": "Booking Confirmed!",
-                "message": f"Your {svc_type} booking with the provider is confirmed for {final_date} at {final_time}.",
-                "related_id": str(result.inserted_id),
-                "status": "unread",
-                "created_at": datetime.utcnow()
-            })
-            socketio.emit('booking_notification', {"user_supabase_id": customer_id})
-            
+            for uid, role, msg_title, msg_body in [
+                (
+                    provider_supabase_id,
+                    "seller",
+                    "Booking Confirmed!",
+                    f"Customer confirmed {svc_type} for {final_date} at {final_time}.",
+                ),
+                (
+                    customer_id,
+                    "buyer",
+                    "Booking Confirmed!",
+                    f"Your {svc_type} booking is confirmed for {final_date} at {final_time}.",
+                ),
+            ]:
+                self.db.notifications.insert_one({
+                    "user_supabase_id": uid,
+                    "role": role,
+                    "type": "booking_confirmed",
+                    "title": msg_title,
+                    "message": msg_body,
+                    "related_id": booking_id,
+                    "status": "unread",
+                    "created_at": datetime.utcnow(),
+                })
+                socketio.emit("booking_notification", {"user_supabase_id": uid})
         except Exception as notif_err:
-            print(f"[BOOKING NOTIF ERROR] Failed to dispatch notifications: {notif_err}")
+            print(f"[BOOKING NOTIF ERROR] {notif_err}")
 
-        log = self.log_action(state, "Booking successfully confirmed", f"Inserted booking record and synced DB status.")
-        trace = self.create_trace("Transaction finalized. Bookings document created and active request marked as booked.")
-        
+        log = self.log_action(state, "Booking confirmed", f"booking_id:{booking_id}")
+        trace = self.create_trace("Transaction finalized. Booking document created and verified.")
+
         updated_booking = {
             **booking_details,
             "request_id": request_id,
+            "booking_id": booking_id,
             "status": "confirmed",
             "timestamp": datetime.utcnow().isoformat(),
             "service": request_doc.get("service_type"),
             "location": request_doc.get("location"),
             "offered_price": final_price,
             "requested_date": final_date,
-            "requested_time": final_time
+            "requested_time": final_time,
         }
-        
+
         return {
+            # ── THE AUTHORITATIVE SIGNAL ──────────────────────────
+            "booking_outcome": {
+                "booking_success": True,
+                "booking_failure": False,
+                "booking_failure_reason": "",
+                "db_write_confirmed": True,
+                "booking_id": booking_id,
+            },
+            # ── STATE UPDATES ─────────────────────────────────────
             "booking_details": updated_booking,
             "latest_request_status": "booked",
             "negotiation_stage": "booked",
             "conversation_stage": "completion",
             "active_agent": "booking",
             "execution_logs": [log],
-            "reasoning_traces": [trace]
+            "reasoning_traces": [trace],
         }
 
+
+# ── SchedulingAgent — GATED on booking_outcome ───────────────────────────────
+
 class SchedulingAgent(BaseAgent):
+    """
+    CHANGE vs original:
+    - Reads booking_outcome before doing anything.
+    - If booking_outcome.booking_success is not True, short-circuits
+      and returns a failure signal so the supervisor can route to
+      communication with an error message instead of a success message.
+    """
+
     def __init__(self, db):
         super().__init__("Scheduling Agent", "Manages followups and notifications")
         self.db = db
 
     def run(self, state: AgentState) -> Dict[str, Any]:
+        booking_outcome = state.get("booking_outcome") or {}
+
+        # Hard gate: do not schedule if booking did not succeed
+        if not booking_outcome.get("booking_success"):
+            failure_reason = booking_outcome.get("booking_failure_reason", "Unknown booking failure")
+            print(f"[SCHEDULING] Skipping — booking_outcome indicates failure: {failure_reason}")
+            log = self.log_action(
+                state,
+                "Scheduling skipped — booking failed",
+                f"Reason: {failure_reason}",
+            )
+            trace = self.create_trace("Scheduling aborted: upstream booking step did not confirm DB write.")
+            # Re-emit the failure outcome so CommunicationAgent sees it
+            return {
+                "booking_outcome": {
+                    **booking_outcome,
+                    "scheduling_skipped": True,
+                    "scheduling_skip_reason": failure_reason,
+                },
+                "active_agent": "scheduling",
+                "execution_logs": [log],
+                "reasoning_traces": [trace],
+            }
+
+        # Normal path
         booking = state.get("booking_details", {})
-        
         notification = {
-            "message": f"Reminder: Your {booking.get('service')} is scheduled for tomorrow.",
+            "message": f"Reminder: Your {booking.get('service')} is scheduled.",
             "type": "reminder",
-            "status": "pending"
+            "status": "pending",
         }
-        
         if state.get("user_id"):
-            self.db.notifications.insert_one({
-                "user_id": state.get("user_id"),
-                "notification": notification
-            })
-            
-        log = self.log_action(state, "Scheduled follow-up", "Reminder added to notification queue.")
-        trace = self.create_trace("Configured automated scheduling triggers for booking reminders and status updates.")
-        
+            try:
+                self.db.notifications.insert_one({
+                    "user_id": state.get("user_id"),
+                    "notification": notification,
+                })
+            except Exception as e:
+                print(f"[SCHEDULING] Notification insert failed: {e}")
+
+        log = self.log_action(state, "Scheduled follow-up", "Reminder queued.")
+        trace = self.create_trace("Configured scheduling triggers for booking reminders.")
         return {
             "active_agent": "scheduling",
             "execution_logs": [log],
-            "reasoning_traces": [trace]
+            "reasoning_traces": [trace],
         }

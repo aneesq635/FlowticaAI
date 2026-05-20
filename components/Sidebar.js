@@ -13,7 +13,7 @@ const SidebarItem = ({ icon: Icon, label, active, onPress, onRename, isEditing, 
       style={styles.itemMain} 
       onPress={onPress}
     >
-      <Icon size={18} color={active ? '#3b82f6' : '#94a3b8'} />
+      <Icon size={18} color={active ? '#fff' : '#94a3b8'} />
       {isEditing ? (
         <TextInput
           style={styles.editInput}
@@ -138,7 +138,7 @@ const Sidebar = () => {
     <View style={styles.container}>
       <View style={styles.logoContainer}>
         <View style={styles.logoIcon}>
-          <Bot size={24} color="#3b82f6" />
+          <Bot size={24} color="#fff" />
         </View>
         <Text style={styles.logoText}>FLOWTICA AI</Text>
       </View>
@@ -190,7 +190,7 @@ const Sidebar = () => {
         <SidebarItem icon={Users} label="AI Strategy Team" />
         
         <TouchableOpacity style={styles.addAgentButton}>
-          <Plus size={16} color="#3b82f6" />
+          <Plus size={16} color="#cbd5e1" />
           <Text style={styles.addAgentText}>Add Agent</Text>
         </TouchableOpacity>
 
@@ -234,11 +234,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     marginBottom: 24,
   },
   newChatText: {
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   activeItem: {
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   itemLabel: {
     marginLeft: 12,
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
   },
   addAgentText: {
-    color: '#3b82f6',
+    color: '#cbd5e1',
     fontSize: 13,
     fontWeight: '600',
     marginLeft: 8,

@@ -5,7 +5,10 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../../components/AuthContext";
 import { Typography } from "../../../components/ui/Typography";
 import { useSelector } from "react-redux";
-import { ArrowLeft, User, Phone, MapPin, Mail, Save } from "lucide-react-native";
+import { ArrowLeft, User, Phone, MapPin, Mail, Save, Map as MapIcon, Navigation } from "lucide-react-native";
+import { LocationService } from "../../../services/location";
+import LocationPickerModal from "../../../components/LocationPickerModal";
+import MiniMap from "../../../components/MiniMap";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -21,10 +24,12 @@ export default function ProfileScreen() {
     name: "",
     phone: "",
     location: "",
+    location_data: null,
     avatar_url: "",
     email: "",
     user_type: "buyer"
   });
+  const [showMap, setShowMap] = useState(false);
 
   const fetchProfile = async () => {
     if (!user?.id) return;
@@ -41,6 +46,7 @@ export default function ProfileScreen() {
           name: data.user.name || "",
           phone: data.user.phone || "",
           location: data.user.location || "",
+          location_data: data.user.location_data || null,
           avatar_url: data.user.avatar_url || "",
           email: data.user.email || user.email || "",
           user_type: data.user.user_type || "buyer"
@@ -89,32 +95,20 @@ export default function ProfileScreen() {
     <View
       style={{
         flex: 1,
-        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
         backgroundColor: isDark ? '#020617' : '#f8fafc'
       }}
     >
-      {/* Header */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          paddingVertical: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: isDark ? '#1e293b' : '#e2e8f0',
-          backgroundColor: isDark ? '#0f172a' : '#ffffff'
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 16 }}>
-          <ArrowLeft size={24} color={isDark ? '#e2e8f0' : '#1e293b'} />
-        </TouchableOpacity>
-        <Typography variant="h3">My Profile</Typography>
-      </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
+        <View style={{ marginBottom: 24 }}>
+          <Typography variant="h1" className="tracking-tighter text-2xl font-black">My Profile</Typography>
+          <Typography variant="body" className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Customize your personal credentials and preferences</Typography>
+        </View>
+
         {loading ? (
           <View style={{ paddingVertical: 80, justifyContent: 'center', alignItems: 'center' }}>
-            <ActivityIndicator size="large" color="#3b82f6" />
+            <ActivityIndicator size="large" color={isDark ? '#ffffff' : '#0f172a'} />
           </View>
         ) : (
           <View
@@ -134,10 +128,10 @@ export default function ProfileScreen() {
                   justifyContent: 'center', alignItems: 'center',
                   backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
                   marginBottom: 16,
-                  borderWidth: 1, borderColor: 'rgba(59,130,246,0.2)'
+                  borderWidth: 1, borderColor: isDark ? '#334155' : '#e2e8f0'
                 }}
               >
-                <User size={48} color="#3b82f6" />
+                <User size={48} color={isDark ? '#ffffff' : '#0f172a'} />
               </View>
               <Typography variant="h2" className="text-center">{profile.name || "Your Name"}</Typography>
               <Typography variant="small" className="opacity-60 capitalize">
@@ -215,8 +209,36 @@ export default function ProfileScreen() {
                 <View style={{ position: 'absolute', left: 16, top: 18 }}>
                   <MapPin size={18} color="#64748b" />
                 </View>
+                <TouchableOpacity
+                  onPress={() => setShowMap(true)}
+                  style={{ position: 'absolute', right: 16, top: 18 }}
+                >
+                  <MapIcon size={18} color="#2563eb" />
+                </TouchableOpacity>
               </View>
+
+              {profile.location_data?.latitude && (
+                <MiniMap
+                  latitude={profile.location_data.latitude}
+                  longitude={profile.location_data.longitude}
+                  address={profile.location}
+                  height={120}
+                />
+              )}
             </View>
+
+            <LocationPickerModal
+              visible={showMap}
+              onClose={() => setShowMap(false)}
+              initialLocation={profile.location_data}
+              onConfirm={(data) => {
+                setProfile({
+                  ...profile,
+                  location: data.address,
+                  location_data: data
+                });
+              }}
+            />
 
             {/* Email (read-only) */}
             <View style={{ marginBottom: 24, opacity: 0.6 }}>
@@ -240,14 +262,13 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            {/* Save Button */}
             <TouchableOpacity
               disabled={saving}
               onPress={handleSave}
               style={{
                 paddingVertical: 16,
                 borderRadius: 16,
-                backgroundColor: '#3b82f6',
+                backgroundColor: isDark ? '#ffffff' : '#0f172a',
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -255,11 +276,11 @@ export default function ProfileScreen() {
               }}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={isDark ? '#0f172a' : '#ffffff'} />
               ) : (
                 <>
-                  <Save size={18} color="#ffffff" />
-                  <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 16 }}>
+                  <Save size={18} color={isDark ? '#0f172a' : '#ffffff'} />
+                  <Text style={{ color: isDark ? '#0f172a' : '#ffffff', fontWeight: 'bold', fontSize: 16 }}>
                     Save Changes
                   </Text>
                 </>

@@ -6,10 +6,11 @@ import * as Linking from 'expo-linking';
 import supabase from "../../components/Supabase.js";
 import * as WebBrowser from "expo-web-browser";
 import { useSelector } from "react-redux";
-import { Typography } from "../../components/ui/Typography";
-import { Button } from "../../components/ui/Button";
-import { Input } from "../../components/ui/Input";
-import { Card } from "../../components/ui/Card";
+import { Typography } from "../../components/ui/Typography.js";
+import { Button } from "../../components/ui/Button.js";
+import { Input } from "../../components/ui/Input.js";
+import { Card } from "../../components/ui/Card.js";
+import { LocationService } from "../../services/location";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -34,6 +35,35 @@ export default function AuthPage() {
         const response = await fetch(`${backendUrl}/user/${session.user.id}`);
         const data = await response.json();
         if (data?.user) {
+          // If this is an explicit login, prompt for location to refresh context
+          if (event === 'SIGNED_IN') {
+            try {
+              const status = await LocationService.requestPermission();
+              let geocoded = null;
+              if (status === 'granted') {
+                const coords = await LocationService.getCurrentPosition();
+                if (coords) {
+                  geocoded = await LocationService.reverseGeocode(coords.latitude, coords.longitude);
+                }
+              }
+              const dbUpdate = {
+                supabase_id: session.user.id,
+                location_permission_status: status === 'granted' ? 'granted' : 'denied'
+              };
+              if (geocoded) {
+                dbUpdate.location_data = geocoded;
+                dbUpdate.location = geocoded.address || "";
+              }
+              // Quietly sync new location to backend
+              await fetch(`${backendUrl}/update-user`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(dbUpdate)
+              });
+            } catch (err) {
+              console.log("[AUTH] Location check error during login:", err);
+            }
+          }
           router.replace("/");
         } else {
           router.replace({
@@ -80,7 +110,7 @@ export default function AuthPage() {
   return (
     <View className={`flex-1 flex-row ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
       {/* Left Panel - Auth Form */}
-      <ScrollView 
+      <ScrollView
         className={`${isDesktop ? 'w-[45%]' : 'w-full'}`}
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
@@ -95,7 +125,7 @@ export default function AuthPage() {
             </Typography>
           </View>
 
-          <Input 
+          <Input
             label="Email Address"
             placeholder="name@example.com"
             value={formData.email}
@@ -105,7 +135,7 @@ export default function AuthPage() {
           />
 
           <View className="relative">
-            <Input 
+            <Input
               label="Password"
               placeholder="••••••••"
               value={formData.password}
@@ -113,7 +143,7 @@ export default function AuthPage() {
               secureTextEntry={!showPassword}
               icon={Lock}
             />
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setShowPassword(!showPassword)}
               className="absolute right-4 top-11"
             >
@@ -127,7 +157,7 @@ export default function AuthPage() {
             </TouchableOpacity>
           )}
 
-          <Button 
+          <Button
             title={loading ? "Processing..." : (isSignUp ? "Create Account" : "Sign In")}
             onPress={handleAuth}
             disabled={loading}
@@ -156,7 +186,7 @@ export default function AuthPage() {
           <View className="absolute top-0 right-0 left-0 bottom-0 opacity-20">
             {/* Background pattern placeholder */}
           </View>
-          
+
           <View className="mb-12">
             <View className="flex-row items-center mb-6">
               <View className="w-12 h-12 bg-blue-600 rounded-2xl items-center justify-center mr-4">

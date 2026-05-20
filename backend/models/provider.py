@@ -23,6 +23,7 @@ class ProviderModel:
             "email": email,
             "phone": phone,
             "location": location,
+            "location_data": user_doc.get("location_data", {}) if user_doc else {},
             "avatar_url": avatar_url,
             "main_service": main_service,
             "status": status,

@@ -25,7 +25,7 @@ export function Button({
   };
 
   const variants = {
-    primary: isDark ? 'bg-blue-600 active:bg-blue-700 shadow-blue-500/20' : 'bg-slate-900 active:bg-slate-800 shadow-slate-900/10',
+    primary: isDark ? 'bg-white active:bg-slate-200 shadow-slate-100/10' : 'bg-slate-900 active:bg-slate-800 shadow-slate-900/10',
     secondary: isDark ? 'bg-slate-800 active:bg-slate-700' : 'bg-slate-100 active:bg-slate-200',
     outline: `bg-transparent border ${isDark ? 'border-slate-700' : 'border-slate-200'} active:bg-slate-50`,
     ghost: 'bg-transparent active:bg-slate-100',
@@ -33,7 +33,7 @@ export function Button({
   };
   
   const textVariants = {
-    primary: 'text-white font-black',
+    primary: isDark ? 'text-slate-950 font-black' : 'text-white font-black',
     secondary: isDark ? 'text-slate-200 font-bold' : 'text-slate-900 font-bold',
     outline: isDark ? 'text-slate-200 font-bold' : 'text-slate-900 font-bold',
     ghost: isDark ? 'text-slate-400 font-bold' : 'text-slate-600 font-bold',
@@ -59,7 +59,7 @@ export function Button({
       >
         {Icon && iconPosition === 'left' && (
           <View className="mr-2">
-            <Icon size={18} color={variant === 'primary' || variant === 'danger' ? '#fff' : (isDark ? '#e2e8f0' : '#0f172a')} />
+            <Icon size={18} color={variant === 'primary' ? (isDark ? '#0f172a' : '#fff') : (variant === 'danger' ? '#fff' : (isDark ? '#e2e8f0' : '#0f172a'))} />
           </View>
         )}
         <Text className={`${textSize[size]} ${textVariants[variant]} uppercase tracking-widest`}>
@@ -67,7 +67,7 @@ export function Button({
         </Text>
         {Icon && iconPosition === 'right' && (
           <View className="ml-2">
-            <Icon size={18} color={variant === 'primary' || variant === 'danger' ? '#fff' : (isDark ? '#e2e8f0' : '#0f172a')} />
+            <Icon size={18} color={variant === 'primary' ? (isDark ? '#0f172a' : '#fff') : (variant === 'danger' ? '#fff' : (isDark ? '#e2e8f0' : '#0f172a'))} />
           </View>
         )}
       </TouchableOpacity>
