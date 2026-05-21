@@ -26,21 +26,21 @@
 
 ##  Table of Contents
 
-- [About The Project](#-about-the-project)
-- [The Problem We Solve](#-the-problem-we-solve)
-- [Key Features](#-key-features)
-- [System Architecture](#-system-architecture)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
+- [About The Project](#about-the-project)
+- [The Problem We Solve](#the-problem-we-solve)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Backend Setup](#backend-setup)
   - [Frontend Setup](#frontend-setup)
-- [Environment Variables](#-environment-variables)
-- [Multi-Agent Workflow](#-multi-agent-workflow)
-- [API Reference](#-api-reference)
-- [Demo](#-demo)
-- [Assumptions & Limitations](#-assumptions--limitations)
+- [Environment Variables](#environment-variables)
+- [Multi-Agent Workflow](#multi-agent-workflow)
+- [API Reference](#api-reference)
+- [Demo](#demo)
+- [Assumptions & Limitations](#assumptions--limitations)
 
 ---
 
