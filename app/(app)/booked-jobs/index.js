@@ -1,19 +1,46 @@
 import React, { useState, useEffect } from "react";
-import { View, ScrollView, TouchableOpacity, Text, TextInput, Modal, Alert, ActivityIndicator, Platform, Linking } from "react-native";
+import { View, ScrollView, TouchableOpacity, Text, TextInput, Modal, Alert, ActivityIndicator, Platform, Linking, StyleSheet, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../../components/AuthContext";
 import { Typography } from "../../../components/ui/Typography";
 import { useSelector } from "react-redux";
-import { ArrowLeft, Clock, MapPin, CheckCircle, XCircle, DollarSign, Briefcase, Star, Trash, User, Phone, Mail } from "lucide-react-native";
+import { Clock, MapPin, CheckCircle, XCircle, DollarSign, Briefcase, Star, Trash, User, Phone, ExternalLink } from "lucide-react-native";
 import MiniMap from "../../../components/MiniMap";
+
+const StatusBadge = ({ status }) => {
+  const getStatusStyles = () => {
+    switch (status) {
+      case 'completed': return { bg: 'rgba(255,255,255,0.05)', text: '#10b981', label: 'COMPLETED' };
+      case 'cancelled': return { bg: 'rgba(239,68,68,0.1)', text: '#ef4444', label: 'CANCELLED' };
+      case 'confirmed': return { bg: 'rgba(255,255,255,0.1)', text: '#fff', label: 'CONFIRMED' };
+      default: return { bg: 'rgba(255,255,255,0.03)', text: '#94a3b8', label: status.toUpperCase() };
+    }
+  };
+
+  const styles = getStatusStyles();
+  return (
+    <View style={[s.statusBadge, { backgroundColor: styles.bg }]}>
+      <Text style={[s.statusText, { color: styles.text }]}>{styles.label}</Text>
+    </View>
+  );
+};
+
+const AvatarPlaceholder = ({ name, size = 48, isDark }) => {
+  const initials = name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'CL';
+  return (
+    <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: isDark ? '#1e293b' : '#e2e8f0' }]}>
+      <Text style={[s.avatarText, { fontSize: size * 0.4, color: isDark ? '#94a3b8' : '#475569' }]}>{initials}</Text>
+    </View>
+  );
+};
 
 export default function BookedJobs() {
   const router = useRouter();
   const { user } = useAuth();
   const reduxTheme = useSelector(state => state.orchestration.theme);
   const isDark = reduxTheme === 'dark';
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.129:5000';
 
   const [bookings, setBookings] = useState([]);
   const [stats, setStats] = useState({
@@ -65,31 +92,6 @@ export default function BookedJobs() {
     fetchData();
   }, [user]);
 
-  const isTimePassed = (dateStr, timeStr) => {
-    try {
-      const now = new Date();
-      let targetDateStr = dateStr;
-      if (timeStr) {
-        let timePart = timeStr.trim();
-        // Convert 12 hour to 24 hour if present
-        if (timePart.toLowerCase().includes('pm') || timePart.toLowerCase().includes('am')) {
-          const parts = timePart.split(' ');
-          const time = parts[0];
-          const modifier = parts[1] || 'pm';
-          let [hours, minutes] = time.split(':');
-          if (hours === '12') hours = '00';
-          if (modifier.toLowerCase() === 'pm') hours = parseInt(hours, 10) + 12;
-          timePart = `${hours.toString().padStart(2, '0')}:${minutes.padStart(2, '0')}`;
-        }
-        targetDateStr = `${dateStr}T${timePart}:00`;
-      }
-      const targetDate = new Date(targetDateStr);
-      return now >= targetDate;
-    } catch (e) {
-      return true; // fallback
-    }
-  };
-
   const handleOpenComplete = (booking) => {
     setSelectedBooking(booking);
     setHoursWorked("");
@@ -100,17 +102,12 @@ export default function BookedJobs() {
 
   const handleCompleteSubmit = async () => {
     if (!hoursWorked || isNaN(hoursWorked) || parseFloat(hoursWorked) <= 0) {
-      Alert.alert("Invalid Input", "Please enter a valid number of hours worked.");
+      Alert.alert("Invalid Input", "Enter hours worked.");
       return;
     }
-    if (!totalEarned || isNaN(totalEarned) || parseFloat(totalEarned) < 0) {
-      Alert.alert("Invalid Input", "Please enter a valid earnings amount.");
-      return;
-    }
-
     try {
       setActionLoading(true);
-      const response = await fetch(`${backendUrl}/api/bookings/${selectedBooking._id}/provider-complete`, {
+      const res = await fetch(`${backendUrl}/api/bookings/${selectedBooking._id}/provider-complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -119,350 +116,350 @@ export default function BookedJobs() {
           note: note
         })
       });
-
-      const resJson = await response.json();
-      if (resJson.success) {
-        Alert.alert("Success", "Job marked as completed successfully!");
+      if ((await res.json()).success) {
         setCompleteModalOpen(false);
         fetchData();
-      } else {
-        Alert.alert("Error", resJson.error || "Failed to complete job.");
       }
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Something went wrong.");
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleCancelBooking = (booking) => {
-    Alert.alert(
-      "Cancel Booking",
-      "Are you sure you want to cancel this booking? This will notify the customer.",
-      [
-        { text: "No", style: "cancel" },
-        {
-          text: "Yes, Cancel",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              const response = await fetch(`${backendUrl}/api/bookings/${booking._id}/cancel`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  user_supabase_id: user.id,
-                  role: "seller"
-                })
-              });
-              const resJson = await response.json();
-              if (resJson.success) {
-                Alert.alert("Cancelled", "Booking has been successfully cancelled.");
-                fetchData();
-              } else {
-                Alert.alert("Error", resJson.error || "Failed to cancel booking.");
-              }
-            } catch (err) {
-              console.error(err);
-              Alert.alert("Error", "Something went wrong.");
-            } finally {
-              setActionLoading(false);
-            }
-          }
+    Alert.alert("Confirm", "Cancel this job?", [
+      { text: "Discard", style: "cancel" },
+      {
+        text: "Confirm",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const res = await fetch(`${backendUrl}/api/bookings/${booking._id}/cancel`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_supabase_id: user.id, role: "seller" })
+            });
+            if ((await res.json()).success) fetchData();
+          } catch (err) { console.error(err); }
+          finally { setActionLoading(false); }
         }
-      ]
-    );
+      }
+    ]);
   };
 
   const handleDeleteBooking = (bookingId) => {
-    Alert.alert(
-      "Delete Job History",
-      "Are you sure you want to delete this job from your history?",
-      [
-        { text: "No", style: "cancel" },
-        {
-          text: "Yes, Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              const response = await fetch(`${backendUrl}/api/bookings/${bookingId}`, {
-                method: "DELETE",
-              });
-              const resJson = await response.json();
-              if (resJson.success) {
-                Alert.alert("Deleted", "Job has been removed.");
-                fetchData();
-              } else {
-                Alert.alert("Error", resJson.error || "Failed to delete job.");
-              }
-            } catch (err) {
-              console.error(err);
-              Alert.alert("Error", "Something went wrong.");
-            } finally {
-              setActionLoading(false);
-            }
-          }
+    Alert.alert("Delete", "Remove from history?", [
+      { text: "No", style: "cancel" },
+      {
+        text: "Yes, Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setActionLoading(true);
+            const res = await fetch(`${backendUrl}/api/bookings/${bookingId}`, { method: "DELETE" });
+            if ((await res.json()).success) fetchData();
+          } catch (e) { console.error(e); }
+          finally { setActionLoading(false); }
         }
-      ]
-    );
+      }
+    ]);
   };
 
-  const insets = useSafeAreaInsets(); // import { useSafeAreaInsets } from 'react-native-safe-area-context'
+  const openMap = (location) => {
+    if (!location?.latitude || !location?.longitude) return;
+    const { latitude, longitude, address } = location;
+    const url = Platform.select({
+      ios: `maps:0,0?q=${address || 'Job Location'}@${latitude},${longitude}`,
+      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${address || 'Job Location'})`,
+    });
+    Linking.openURL(url);
+  };
+
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: isDark ? '#020617' : '#f8fafc' }}>
-
-      <ScrollView style={{ flex: 1, padding: 24 }} contentContainerStyle={{ paddingBottom: 100 }}>
-        <View className="mb-6">
-          <Typography variant="h1" className="tracking-tighter text-2xl font-black">Booked Jobs</Typography>
-          <Typography variant="body" className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Monitor active bookings, stats, and milestones</Typography>
+      <ScrollView style={{ flex: 1, paddingHorizontal: 24 }} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <View style={s.header}>
+          <Typography variant="h1" style={s.title}>Booked Jobs</Typography>
+          <Text style={[s.subtitle, { color: isDark ? '#64748b' : '#94a3b8' }]}>ORCHESTRATION PIPELINE</Text>
         </View>
 
-        {/* Insight Section */}
-        <View className={`p-5 mb-6 rounded-3xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-          <Typography variant="h3" className="mb-4">Provider Dashboard Insights</Typography>
-          <View className="flex-row flex-wrap justify-between">
-            <View className={`w-[48%] p-3 mb-3 rounded-2xl ${isDark ? 'bg-slate-800/40' : 'bg-slate-100'} items-center`}>
-              <Star size={20} color={isDark ? '#e2e8f0' : '#0f172a'} />
-              <Typography variant="h4">{stats.rating.toFixed(1)}</Typography>
-              <Typography variant="small" className="opacity-60 text-center">Avg Rating</Typography>
+        {/* Insight Section - Premium Management Header */}
+        <View style={[s.statsCard, { backgroundColor: isDark ? '#0f172a' : '#fff', borderColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+          <View style={s.statsGrid}>
+            <View style={s.statItem}>
+              <Text style={s.statLabel}>RATING</Text>
+              <Text style={[s.statValue, { color: isDark ? '#fff' : '#000' }]}>{stats.rating.toFixed(1)}</Text>
             </View>
-            <View className="w-[48%] p-3 mb-3 rounded-2xl bg-emerald-500/10 items-center">
-              <CheckCircle size={20} color="#10b981" />
-              <Typography variant="h4">{stats.completed_jobs}</Typography>
-              <Typography variant="small" className="opacity-60 text-center">Completed Jobs</Typography>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statLabel}>COMPLETED</Text>
+              <Text style={[s.statValue, { color: isDark ? '#fff' : '#000' }]}>{stats.completed_jobs}</Text>
             </View>
-            <View className="w-[48%] p-3 rounded-2xl bg-amber-500/10 items-center">
-              <Clock size={20} color="#f59e0b" />
-              <Typography variant="h4">{stats.total_hours_worked}</Typography>
-              <Typography variant="small" className="opacity-60 text-center">Total Hours</Typography>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statLabel}>HOURS</Text>
+              <Text style={[s.statValue, { color: isDark ? '#fff' : '#000' }]}>{stats.total_hours_worked}</Text>
             </View>
-            <View className="w-[48%] p-3 rounded-2xl bg-purple-500/10 items-center">
-              <DollarSign size={20} color="#a855f7" />
-              <Typography variant="h4">{stats.total_earnings} PKR</Typography>
-              <Typography variant="small" className="opacity-60 text-center">Total Earnings</Typography>
+            <View style={s.statDivider} />
+            <View style={s.statItem}>
+              <Text style={s.statLabel}>EARNINGS</Text>
+              <View style={s.earningsRow}>
+                <Text style={[s.statValue, { color: isDark ? '#fff' : '#000' }]}>{stats.total_earnings}</Text>
+                <Text style={s.statUnit}>PKR</Text>
+              </View>
             </View>
           </View>
         </View>
-
-        <Typography variant="h3" className="mb-4">My Booked Jobs</Typography>
 
         {loading ? (
-          <View style={{ paddingVertical: 40, justifyContent: 'center', alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={isDark ? '#ffffff' : '#0f172a'} />
-          </View>
+          <ActivityIndicator style={{ marginTop: 40 }} color={isDark ? '#fff' : '#0f172a'} />
         ) : bookings.length === 0 ? (
-          <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 40 }}>
-            <Briefcase size={48} color={isDark ? '#475569' : '#94a3b8'} />
-            <Typography variant="h3" className="mb-2 mt-3">No Confirmed Jobs</Typography>
-            <Typography variant="small" className="text-center opacity-60">
-              When client confirms a transaction request, the jobs will show up here.
-            </Typography>
+          <View style={s.emptyState}>
+            <Briefcase size={48} color={isDark ? '#1e293b' : '#e2e8f0'} />
+            <Text style={[s.emptyText, { color: isDark ? '#475569' : '#94a3b8' }]}>No active workloads assigned.</Text>
           </View>
         ) : (
           bookings.map(booking => {
+            const snap = booking.snapshot || {};
             const completed = booking.status === 'completed';
             const cancelled = booking.status === 'cancelled';
             const upcoming = !completed && !cancelled;
-            const isDoneEnabled = upcoming;
 
             return (
-              <View key={booking._id} className={`p-5 mb-4 rounded-3xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-                <View className="flex-row justify-between items-start mb-4">
-                  <View className="flex-1 mr-2">
-                    <Typography variant="h3">{booking.service_type}</Typography>
-                    <Typography variant="small" className="text-blue-500 font-bold mt-1">
-                      Agreed Price: {booking.price} PKR
-                    </Typography>
-                  </View>
-                  <View className="flex-row items-center gap-2">
-                    <View className={`px-3 py-1 rounded-full ${completed ? 'bg-green-500/20' : cancelled ? 'bg-red-500/20' : 'bg-blue-500/20'}`}>
-                      <Text className={`font-bold ${completed ? 'text-green-500' : cancelled ? 'text-red-500' : 'text-blue-500'}`}>
-                        {completed ? 'Completed' : cancelled ? 'Cancelled' : 'Confirmed'}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteBooking(booking._id)}
-                      className={`w-8 h-8 rounded-full items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
-                    >
-                      <Trash size={14} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
+              <View key={booking._id} style={[s.card, { backgroundColor: isDark ? '#0f172a' : '#fff', borderColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+                {/* Trash Button - Absolute Position */}
+                <TouchableOpacity onPress={() => handleDeleteBooking(booking._id)} style={s.trashBtnAbsolute}>
+                  <Trash size={14} color="#ef4444" />
+                </TouchableOpacity>
+
+                {/* Card Header: Type + Status */}
+                <View style={s.cardTop}>
+                  <StatusBadge status={booking.status} />
                 </View>
 
-                <View className="border-t border-b py-3 my-2 border-slate-100 dark:border-slate-800">
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                    <Clock size={16} color={isDark ? '#94a3b8' : '#64748b'} />
-                    <Typography variant="small" className="opacity-80 ml-2 font-semibold">
-                      Scheduled: {booking.requested_date} at {booking.requested_time}
-                    </Typography>
-                  </View>
-
-                  <Text className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 ml-0.5">Customer Details</Text>
-
-                  <View className="flex-row items-center mb-3">
-                    <View className="w-10 h-10 rounded-full bg-blue-500/10 items-center justify-center mr-3 border border-blue-500/20">
-                      <User size={18} color="#3b82f6" />
-                    </View>
-                    <View className="flex-1">
-                      <Typography variant="small" className="font-bold text-slate-900 dark:text-white text-sm">
-                        {booking.customer_name || 'Client'}
-                      </Typography>
-                      {booking.customer_email ? (
-                        <View className="flex-row items-center mt-0.5">
-                          <Mail size={12} color={isDark ? '#64748b' : '#94a3b8'} style={{ marginRight: 4 }} />
-                          <Typography variant="small" className="text-slate-500 dark:text-slate-400 text-xs">
-                            {booking.customer_email}
-                          </Typography>
-                        </View>
-                      ) : null}
+                {/* Main Info Section */}
+                <View style={s.cardBody}>
+                  <View style={s.serviceHeader}>
+                    <Text style={[s.serviceType, { color: isDark ? '#fff' : '#0f172a' }]}>{booking.service_type.toUpperCase()}</Text>
+                    <View style={s.priceTag}>
+                      <Text style={s.priceText}>{booking.price}</Text>
+                      <Text style={s.currencyText}>PKR</Text>
                     </View>
                   </View>
 
+                  <View style={s.divider} />
 
-                  {(booking.customer_phone && booking.customer_phone !== 'Not provided') ||
-                    (booking.customer_location && booking.customer_location !== 'Not provided') ? (
-                    <View className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/40">
-                      {booking.customer_phone && booking.customer_phone !== 'Not provided' && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: (booking.customer_location && booking.customer_location !== 'Not provided') ? 6 : 0 }}>
-                          <Phone size={13} color={isDark ? '#64748b' : '#94a3b8'} />
-                          <Typography variant="small" className="opacity-80 ml-2 text-xs font-semibold">
-                            {booking.customer_phone}
-                          </Typography>
-                        </View>
+                  {/* Customer Section */}
+                  <View style={s.entityRow}>
+                    <View style={s.avatarContainer}>
+                      {snap.customer_avatar ? (
+                        <Image source={{ uri: snap.customer_avatar }} style={s.avatar} />
+                      ) : (
+                        <AvatarPlaceholder name={snap.customer_name || 'Client'} isDark={isDark} />
                       )}
-                      {booking.customer_location && booking.customer_location !== 'Not provided' && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <MapPin size={13} color={isDark ? '#64748b' : '#94a3b8'} />
-                          <Typography variant="small" className="opacity-80 ml-2 text-xs font-semibold">
-                            {booking.customer_location}
-                          </Typography>
+                    </View>
+                    <View style={s.entityDetails}>
+                      <Text style={[s.entityName, { color: isDark ? '#f8fafc' : '#0f172a' }]}>{snap.customer_name || 'Client'}</Text>
+                      {snap.customer_phone && (
+                        <View style={s.infoRow}>
+                          <Phone size={10} color="#64748b" />
+                          <Text style={s.infoText}>{snap.customer_phone}</Text>
                         </View>
                       )}
                     </View>
-                  ) : null}
+                  </View>
 
-                  {booking.snapshot?.customer_location_data?.latitude && (
-                    <TouchableOpacity 
-                      onPress={() => {
-                        const lat = booking.snapshot.customer_location_data.latitude;
-                        const lng = booking.snapshot.customer_location_data.longitude;
-                        const label = booking.snapshot.customer_name || 'Customer Location';
-                        const latLng = `${lat},${lng}`;
-                        const url = Platform.select({
-                          ios: `maps:0,0?q=${label}@${latLng}`,
-                          android: `geo:0,0?q=${latLng}(${label})`,
-                        });
-                        Linking.openURL(url);
-                      }}
-                      className="rounded-2xl overflow-hidden mb-2"
-                    >
-                      <MiniMap
-                        latitude={booking.snapshot.customer_location_data.latitude}
-                        longitude={booking.snapshot.customer_location_data.longitude}
-                        address={booking.snapshot.customer_location_data.address || booking.location}
-                        height={120}
-                      />
-                    </TouchableOpacity>
+                  {/* Operational Info Boxes */}
+                  <View style={s.operationalGrid}>
+                    <View style={[s.infoBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }]}>
+                      <View style={s.infoRow}>
+                        <Clock size={12} color="#64748b" />
+                        <Text style={s.infoLabel}>TASK START:</Text>
+                      </View>
+                      <Text style={[s.infoValue, { color: isDark ? '#cbd5e1' : '#1e293b' }]}>
+                        {booking.requested_date} @ {booking.requested_time}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Location & Map Section */}
+                  {snap.customer_location_data?.address && (
+                    <View style={s.locationSection}>
+                      <View style={s.locationHeader}>
+                        <MapPin size={12} color="#64748b" />
+                        <Text style={s.locationTitle}>JOB SITE ADDRESS</Text>
+                      </View>
+                      <Text style={[s.addressText, { color: isDark ? '#94a3b8' : '#475569' }]} numberOfLines={2}>
+                        {snap.customer_location_data.address}
+                      </Text>
+
+                      {snap.customer_location_data.latitude && (
+                        <View style={s.mapWrapper}>
+                          <MiniMap
+                            latitude={snap.customer_location_data.latitude}
+                            longitude={snap.customer_location_data.longitude}
+                            address={snap.customer_location_data.address}
+                            height={110}
+                          />
+                          <TouchableOpacity onPress={() => openMap(snap.customer_location_data)} style={s.mapOverlay}>
+                            <View style={s.mapAction}>
+                              <ExternalLink size={14} color="#fff" />
+                              <Text style={s.mapActionText}>NAVIGATE</Text>
+                            </View>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
                   )}
                 </View>
 
+                {/* Footer Action Buttons */}
                 {upcoming && (
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                    <TouchableOpacity
-                      onPress={() => handleCancelBooking(booking)}
-                      style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.1)', flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                    >
-                      <Trash size={16} color="#ef4444" />
-                      <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Cancel Job</Text>
+                  <View style={s.cardActions}>
+                    <TouchableOpacity onPress={() => handleCancelBooking(booking)} style={[s.actionBtn, s.cancelBtn]}>
+                      <Text style={s.cancelBtnText}>CANCEL TASK</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       onPress={() => handleOpenComplete(booking)}
-                      style={{ paddingHorizontal: 24, paddingVertical: 10, borderRadius: 16, backgroundColor: '#22c55e', flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                      style={[s.actionBtn, s.completeBtn]}
                     >
-                      <CheckCircle size={16} color="#ffffff" />
-                      <Text style={{ color: '#ffffff', fontWeight: 'bold' }}>Done</Text>
+                      <Text style={s.completeBtnText}>DEPLOY COMPLETE</Text>
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
+
             );
           })
         )}
-      </ScrollView >
+      </ScrollView>
 
-      {/* Modal */}
-      < Modal visible={completeModalOpen} animationType="slide" transparent={true} >
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
-          <View style={{ padding: 24, borderTopLeftRadius: 40, borderTopRightRadius: 40, borderTopWidth: 1, borderColor: isDark ? '#1e293b' : '#f1f5f9', backgroundColor: isDark ? '#0f172a' : '#ffffff', minHeight: 450 }}>
-            <View style={{ width: 48, height: 6, borderRadius: 3, backgroundColor: isDark ? '#334155' : '#e2e8f0', alignSelf: 'center', marginBottom: 24 }} />
+      {/* Completion Modal */}
+      <Modal visible={completeModalOpen} animationType="slide" transparent={true}>
+        <View style={s.modalContainer}>
+          <View style={[s.modal, { backgroundColor: isDark ? '#0f172a' : '#fff' }]}>
+            <View style={[s.modalHandle, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]} />
 
-            <Typography variant="h2" className="mb-2">Complete Booking</Typography>
-            <Typography variant="small" className="opacity-70 mb-6">
-              Enter hours worked and the final earned amount to complete the job.
-            </Typography>
+            <Text style={[s.modalTitle, { color: isDark ? '#fff' : '#0f172a' }]}>MARK AS DEPLOYED</Text>
 
-            <View className="mb-4">
-              <Typography variant="small" className="font-bold mb-2">Hours Worked</Typography>
+            <View style={s.inputGroup}>
+              <Text style={s.inputLabel}>HOURS WORKED</Text>
               <TextInput
                 value={hoursWorked}
                 onChangeText={setHoursWorked}
                 placeholder="e.g. 2.5"
                 keyboardType="numeric"
-                placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                className={`p-4 rounded-2xl border text-base ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                placeholderTextColor="#475569"
+                style={[s.input, { backgroundColor: isDark ? '#020617' : '#f8fafc', color: isDark ? '#fff' : '#000', borderColor: isDark ? '#1e293b' : '#e2e8f0' }]}
               />
             </View>
 
-            <View className="mb-4">
-              <Typography variant="small" className="font-bold mb-2">Total Earnings (PKR)</Typography>
+            <View style={s.inputGroup}>
+              <Text style={s.inputLabel}>TOTAL EARNINGS (PKR)</Text>
               <TextInput
                 value={totalEarned}
                 onChangeText={setTotalEarned}
-                placeholder="e.g. 1500"
+                placeholder="Final amount"
                 keyboardType="numeric"
-                placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                className={`p-4 rounded-2xl border text-base ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                placeholderTextColor="#475569"
+                style={[s.input, { backgroundColor: isDark ? '#020617' : '#f8fafc', color: isDark ? '#fff' : '#000', borderColor: isDark ? '#1e293b' : '#e2e8f0' }]}
               />
             </View>
 
-            <View className="mb-6">
-              <Typography variant="small" className="font-bold mb-2">Optional Notes</Typography>
+            <View style={s.inputGroup}>
+              <Text style={s.inputLabel}>DEBRIEF NOTES</Text>
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="Any special remarks..."
-                placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                className={`p-4 rounded-2xl border text-base ${isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                placeholder="Technical remarks..."
+                placeholderTextColor="#475569"
+                style={[s.input, { backgroundColor: isDark ? '#020617' : '#f8fafc', color: isDark ? '#fff' : '#000', borderColor: isDark ? '#1e293b' : '#e2e8f0', height: 80 }]}
+                multiline
               />
             </View>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 'auto' }}>
-              <TouchableOpacity
-                onPress={() => setCompleteModalOpen(false)}
-                style={{ width: '45%', paddingVertical: 16, borderRadius: 16, alignItems: 'center', backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }}
-              >
-                <Text style={{ fontWeight: 'bold', color: isDark ? '#ffffff' : '#0f172a' }}>Cancel</Text>
+            <View style={s.modalActions}>
+              <TouchableOpacity onPress={() => setCompleteModalOpen(false)} style={s.modalCancel}>
+                <Text style={[s.modalCancelText, { color: isDark ? '#fff' : '#000' }]}>DISCARD</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                disabled={actionLoading}
-                onPress={handleCompleteSubmit}
-                style={{ width: '45%', paddingVertical: 16, borderRadius: 16, alignItems: 'center', backgroundColor: '#22c55e' }}
-              >
-                {actionLoading ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <Text style={{ color: '#ffffff', fontWeight: 'bold' }}>Submit</Text>
-                )}
+              <TouchableOpacity disabled={actionLoading} onPress={handleCompleteSubmit} style={s.modalSubmit}>
+                {actionLoading ? <ActivityIndicator size="small" color="#000" /> : <Text style={s.modalSubmitText}>FINALIZE</Text>}
               </TouchableOpacity>
             </View>
           </View>
         </View>
-      </Modal >
-    </View >
+      </Modal>
+    </View>
   );
 }
+
+const s = StyleSheet.create({
+  header: { marginBottom: 32, marginTop: 24 },
+  title: { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
+  subtitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginTop: 4 },
+  statsCard: { paddingHorizontal: 24, paddingVertical: 18, borderRadius: 28, marginBottom: 28, borderWidth: 1 },
+  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statItem: { alignItems: 'center' },
+  statLabel: { fontSize: 8, fontWeight: '900', color: '#64748b', marginBottom: 6, letterSpacing: 1 },
+  statValue: { fontSize: 16, fontWeight: '900' },
+  statDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.06)' },
+  earningsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  statUnit: { fontSize: 8, fontWeight: '900', color: '#64748b', marginBottom: 2 },
+  emptyState: { alignItems: 'center', marginTop: 80, gap: 16 },
+  emptyText: { fontSize: 12, fontWeight: 'bold' },
+  card: { borderRadius: 28, padding: 24, marginBottom: 20, borderWidth: 1, overflow: 'hidden' },
+  trashBtnAbsolute: { position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(239,68,68,0.08)', zIndex: 10 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  cardBody: { gap: 20 },
+  serviceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: 40 },
+  serviceType: { fontSize: 18, fontWeight: '900', letterSpacing: 0.5, flex: 1, lineHeight: 24 },
+  priceTag: { alignItems: 'flex-end', marginLeft: 12 },
+  priceText: { fontSize: 18, fontWeight: '900', color: '#64748b' },
+  currencyText: { fontSize: 10, fontWeight: '900', color: '#94a3b8', marginTop: -2 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  entityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  avatarContainer: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+  avatar: { width: 48, height: 48, borderRadius: 24 },
+  entityDetails: { gap: 4, flex: 1 },
+  entityName: { fontSize: 14, fontWeight: '800' },
+  operationalGrid: { gap: 12 },
+  infoBox: { padding: 16, borderRadius: 18 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  infoLabel: { fontSize: 9, color: '#64748b', fontWeight: '900', letterSpacing: 0.5 },
+  infoValue: { fontSize: 12, fontWeight: '700' },
+  infoText: { fontSize: 11, color: '#94a3b8' },
+  locationSection: { gap: 10 },
+  locationHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  locationTitle: { fontSize: 10, fontWeight: '900', color: '#64748b', letterSpacing: 1 },
+  addressText: { fontSize: 13, lineHeight: 20 },
+  mapWrapper: { borderRadius: 20, overflow: 'hidden', height: 110, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  mapOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' },
+  mapAction: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
+  mapActionText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  cardActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  actionBtn: { flex: 1, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  cancelBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)' },
+  cancelBtnText: { color: '#ef4444', fontSize: 11, fontWeight: '900' },
+  completeBtn: { backgroundColor: '#fff' },
+  completeBtnText: { color: '#000', fontSize: 11, fontWeight: '900' },
+  modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modal: { padding: 32, borderTopLeftRadius: 40, borderTopRightRadius: 40, gap: 20 },
+  modalHandle: { width: 48, height: 6, borderRadius: 3, alignSelf: 'center', marginBottom: 4 },
+  modalTitle: { fontSize: 16, fontWeight: '900', textAlign: 'center', letterSpacing: 1, marginBottom: 16 },
+  inputGroup: { gap: 8 },
+  inputLabel: { fontSize: 9, fontWeight: '900', color: '#64748b' },
+  input: { padding: 16, borderRadius: 16, borderWidth: 1, fontSize: 14 },
+  modalActions: { flexDirection: 'row', gap: 16, marginTop: 12 },
+  modalCancel: { flex: 1, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  modalCancelText: { fontWeight: '900', fontSize: 11 },
+  modalSubmit: { flex: 1, height: 56, borderRadius: 18, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  modalSubmitText: { color: '#000', fontWeight: '900', fontSize: 11 },
+});

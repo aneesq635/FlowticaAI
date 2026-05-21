@@ -1,15 +1,15 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import store from '../store';
-import { 
-  setConnectionStatus, 
-  setIsSpeaking, 
-  setIsListening, 
-  updateLiveTranscript, 
-  updateAssistantTranscript, 
-  updateWaveformLevels, 
-  setVoiceError, 
-  endVoiceSession 
+import {
+  setConnectionStatus,
+  setIsSpeaking,
+  setIsListening,
+  updateLiveTranscript,
+  updateAssistantTranscript,
+  updateWaveformLevels,
+  setVoiceError,
+  endVoiceSession
 } from '../store/liveAgentSlice';
 import { addMessage } from '../store/chatSlice';
 
@@ -58,7 +58,7 @@ class GeminiLiveManager {
     this.conversationId = conversationId;
     this.userId = userId || 'anonymous';
     this.socketioSid = socketioSid;
-    
+
     // 1. Request microphone permission
     const granted = await this.requestPermissions();
     if (!granted) {
@@ -76,17 +76,12 @@ class GeminiLiveManager {
       });
 
       // 2. Request ephemeral WebSocket token from Flask backend
-      const tokenResponse = await fetch(`${BACKEND_URL}/api/gemini/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: this.conversationId,
-          user_id: this.userId,
-          socketio_sid: this.socketioSid
-        }),
+      const tokenData = await api.post('/api/gemini/token', {
+        conversation_id: this.conversationId,
+        user_id: this.userId,
+        socketio_sid: this.socketioSid
       });
 
-      const tokenData = await tokenResponse.json();
       if (!tokenData.success) {
         throw new Error(tokenData.error || 'Failed to fetch ephemeral session token.');
       }
@@ -97,7 +92,7 @@ class GeminiLiveManager {
       // 3. Connect to secure Flask WebSocket Proxy (port 5001)
       const wsUrl = `${GEMINI_WS_URL}/api/gemini/ws?token=${token}`;
       console.log(`[GEMINI MANAGER] Connecting to WebSocket proxy: ${wsUrl}`);
-      
+
       this.ws = new WebSocket(wsUrl);
       store.dispatch(setConnectionStatus('connecting'));
 
@@ -105,7 +100,7 @@ class GeminiLiveManager {
         console.log('[GEMINI MANAGER SUCCESS] WebSocket Proxy connection opened successfully.');
         store.dispatch(setConnectionStatus('connected'));
         store.dispatch(setIsListening(true));
-        
+
         // Start streaming audio in background
         this.startStreaming();
         this.startAmplitudeSimulator();
@@ -114,12 +109,12 @@ class GeminiLiveManager {
       this.ws.onmessage = async (event) => {
         try {
           const payload = JSON.parse(event.data);
-          
+
           // Case 1: Audio Playback chunk received
           if (payload.type === 'audio' && payload.data) {
             this.handleIncomingAudio(payload.data);
           }
-          
+
           // Case 2: Transcription updates
           if (payload.type === 'caption') {
             const { role, text } = payload;
@@ -156,7 +151,7 @@ class GeminiLiveManager {
    */
   async startStreaming() {
     this.isRecordingActive = true;
-    
+
     // Helper: safely stop a recording, swallowing "already unloaded" errors.
     const safeStop = async (rec) => {
       if (!rec) return;
@@ -311,9 +306,9 @@ class GeminiLiveManager {
 
       // Encode combined bytes to safe base64
       const completeWavBase64 = this.arrayBufferToBase64(combined.buffer);
-      
-      const fileUri = `${FileSystem.documentDirectory}live_reply_${Date.now()}_${Math.floor(Math.random()*1000)}.wav`;
-      
+
+      const fileUri = `${FileSystem.documentDirectory}live_reply_${Date.now()}_${Math.floor(Math.random() * 1000)}.wav`;
+
       // Write the complete playable WAV file to disk
       await FileSystem.writeAsStringAsync(fileUri, completeWavBase64, {
         encoding: FileSystem.EncodingType.Base64,
@@ -337,12 +332,12 @@ class GeminiLiveManager {
 
     try {
       store.dispatch(setIsSpeaking(true));
-      
+
       const { sound } = await Audio.Sound.createAsync(
         { uri },
         { shouldPlay: true }
       );
-      
+
       this.activeSound = sound;
 
       sound.setOnPlaybackStatusUpdate(async (status) => {
@@ -350,7 +345,7 @@ class GeminiLiveManager {
           // Playback finished cleanly
           this.activeSound = null;
           await sound.unloadAsync();
-          
+
           // Clean up temp file
           await FileSystem.deleteAsync(uri, { idempotent: true });
 
@@ -378,7 +373,7 @@ class GeminiLiveManager {
     if (!this.activeSound && this.playbackQueue.length === 0) return;
 
     console.log('[GEMINI MANAGER] Interruption triggered! Clearing playback queue and stopping speaker.');
-    
+
     try {
       // Tell backend to cancel active Gemini Live audio output
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -435,7 +430,7 @@ class GeminiLiveManager {
       const state = store.getState().liveAgent;
       let min = 2;
       let max = 6;
-      
+
       if (state.isSpeaking) {
         min = 10;
         max = 40;
@@ -444,11 +439,11 @@ class GeminiLiveManager {
         min = 4;
         max = 12;
       }
-      
-      const newLevels = Array(15).fill(0).map(() => 
+
+      const newLevels = Array(15).fill(0).map(() =>
         Math.floor(Math.random() * (max - min + 1) + min)
       );
-      
+
       store.dispatch(updateWaveformLevels(newLevels));
     }, 120);
   }
@@ -459,7 +454,7 @@ class GeminiLiveManager {
   cleanup() {
     console.log('[GEMINI MANAGER] Triggering deep audio and socket cleanup...');
     this.isRecordingActive = false;
-    
+
     if (this.amplitudeInterval) {
       clearInterval(this.amplitudeInterval);
       this.amplitudeInterval = null;
@@ -474,25 +469,25 @@ class GeminiLiveManager {
       // Null the ref FIRST so the recordNextChunk loop cannot also try to stop it.
       const recToStop = this.currentRecording;
       this.currentRecording = null;
-      recToStop.stopAndUnloadAsync().catch(() => {});
+      recToStop.stopAndUnloadAsync().catch(() => { });
     }
 
     if (this.activeSound) {
       const sound = this.activeSound;
       this.activeSound = null;
-      sound.stopAsync().then(() => sound.unloadAsync()).catch(err => {});
+      sound.stopAsync().then(() => sound.unloadAsync()).catch(err => { });
     }
 
     // Delete all temporary wav audio cache files
     while (this.playbackQueue.length > 0) {
       const uri = this.playbackQueue.shift();
-      FileSystem.deleteAsync(uri, { idempotent: true }).catch(err => {});
+      FileSystem.deleteAsync(uri, { idempotent: true }).catch(err => { });
     }
 
     if (this.ws) {
       try {
         this.ws.close();
-      } catch (err) {}
+      } catch (err) { }
       this.ws = null;
     }
   }

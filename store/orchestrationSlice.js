@@ -38,6 +38,7 @@ const initialState = {
     availability: true,
   },
   theme: 'dark', // 'light' | 'dark'
+  isEngineExpanded: false,
   unreadNotificationsCount: 0,
 };
 
@@ -45,6 +46,12 @@ const orchestrationSlice = createSlice({
   name: 'orchestration',
   initialState,
   reducers: {
+    toggleEngine: (state) => {
+      state.isEngineExpanded = !state.isEngineExpanded;
+    },
+    setEngineExpanded: (state, action) => {
+      state.isEngineExpanded = action.payload;
+    },
     setAgentStatus: (state, action) => {
       const { agent, status } = action.payload;
       state.activeAgents[agent] = status;
@@ -117,12 +124,12 @@ const orchestrationSlice = createSlice({
   },
 });
 
-export const { 
-  setAgentStatus, 
-  updatePipeline, 
-  addLog, 
-  addTrace, 
-  updateSharedState, 
+export const {
+  setAgentStatus,
+  updatePipeline,
+  addLog,
+  addTrace,
+  updateSharedState,
   addToolLog,
   startWorkflow,
   completeWorkflow,
@@ -136,7 +143,9 @@ export const {
   setProviderProfile,
   toggleTheme,
   setTheme,
-  setUnreadCount
+  setUnreadCount,
+  toggleEngine,
+  setEngineExpanded
 } = orchestrationSlice.actions;
 
 export default orchestrationSlice.reducer;

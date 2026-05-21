@@ -1,273 +1,353 @@
-import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { useSelector } from 'react-redux';
-import { MotiView } from 'moti';
+import { MotiView, AnimatePresence } from 'moti';
 import {
-  Activity, CheckCircle, Clock, AlertTriangle,
-  Database, Cpu, MessageSquare, Settings,
-  Terminal, Layers
+  Cpu, Activity, CheckCircle, Clock, AlertTriangle,
+  Database, MessageSquare, Settings, Layers,
+  Terminal, Zap, ChevronDown, ChevronUp, Box,
+  Code, Info, Activity as TraceIcon
 } from 'lucide-react-native';
+import PipelineGraph from './PipelineGraph';
+import { ShieldCheck } from 'lucide-react-native';
+import { Search
+  , Calculator,MessageCircle,AlertCircle
+ } from 'lucide-react-native';
 
-const AGENT_CONFIG = {
-  'supervisor':    { name: 'Supervisor Agent',   desc: 'System brain — orchestrates the entire workflow', icon: Cpu,          color: '#f87171' },
-  'intent':        { name: 'Intent Agent',        desc: 'Classifies user intent & goals',                 icon: Cpu,          color: '#f87171' },
-  'extraction':    { name: 'Extraction Agent',    desc: 'Extracts structured entities from chat',         icon: Settings,     color: '#60a5fa' },
-  'memory':        { name: 'Memory Agent',        desc: 'Syncs user profile & preferences',               icon: Database,     color: '#fbbf24' },
-  'knowledge':     { name: 'Knowledge Agent',     desc: 'Retrieves providers from MongoDB RAG',           icon: Layers,       color: '#38bdf8' },
-  'matching':      { name: 'Matching Agent',      desc: 'Ranks candidates via scoring engine',            icon: Database,     color: '#c084fc' },
-  'booking':       { name: 'Booking Agent',       desc: 'Finalizes service transactions',                 icon: CheckCircle,  color: '#2dd4bf' },
-  'scheduling':    { name: 'Scheduling Agent',    desc: 'Configures automated follow-ups',                icon: Clock,        color: '#4ade80' },
-  'communication': { name: 'Frontier Agent',      desc: 'Dedicated user communication interface',         icon: MessageSquare,color: '#f472b6' },
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const AGENT_META = {
+  'supervisor': { name: 'Supervisor', stateKey: 'Supervisor', icon: Cpu, desc: 'Workflow Controller' },
+  'intent': { name: 'Intent', stateKey: 'Intent Agent', icon: Zap, desc: 'Goal Classification' },
+  'extraction': { name: 'Extraction', stateKey: 'Extraction Agent', icon: Search, desc: 'Entity Parsing' },
+  'knowledge': { name: 'Retrieval', stateKey: 'Knowledge Agent', icon: Database, desc: 'Knowledge RAG' },
+  'matching': { name: 'Matching', stateKey: 'Matching Agent', icon: Layers, desc: 'Candidate Scoring' },
+  'pricing': { name: 'Pricing', stateKey: 'Pricing Agent', icon: Calculator, desc: 'Cost Estimation' },
+  'booking': { name: 'Service', stateKey: 'Booking Agent', icon: ShieldCheck, desc: 'Transaction Engine' },
+  'scheduling': { name: 'Scheduling', stateKey: 'Scheduling Agent', icon: Clock, desc: 'Timeline Management' },
+  'followup': { name: 'Frontier', stateKey: 'Follow-up Agent', icon: MessageCircle, desc: 'User Communication' },
+  'dispute': { name: 'Dispute', stateKey: 'Dispute Resolution Agent', icon: AlertCircle, desc: 'Conflict Handling' },
 };
 
-const AgentCard = ({ agentKey, status, trace, isDark }) => {
-  const config = AGENT_CONFIG[agentKey] || { name: agentKey, desc: 'AI Orchestration Agent', icon: Cpu, color: '#94a3b8' };
-  const Icon = config.icon;
+const ReasoningBlock = ({ label, content, icon: Icon }) => (
+  <View style={styles.reasoningBlock}>
+    <View style={styles.reasoningHeader}>
+      <Icon size={12} color="#475569" strokeWidth={2.5} />
+      <Text style={styles.reasoningLabel}>{label}</Text>
+    </View>
+    <Text style={styles.reasoningText}>{content}</Text>
+  </View>
+);
 
-  const getStatusDisplay = () => {
-    switch (status) {
-      case 'running':   return { label: 'RUNNING',   color: '#fbbf24', icon: Activity      };
-      case 'completed': return { label: 'COMPLETED', color: '#10b981', icon: CheckCircle   };
-      case 'failed':    return { label: 'FAILED',    color: '#ef4444', icon: AlertTriangle };
-      default:          return { label: 'IDLE',      color: '#64748b', icon: Clock         };
-    }
-  };
+const AgentCard = ({ agentKey, meta, status, trace, isDark }) => {
+  const [expanded, setExpanded] = useState(status === 'running');
+  const Icon = meta.icon || Cpu;
 
-  const statusDisplay = getStatusDisplay();
-  const StatusIcon = statusDisplay.icon;
+  const isRunning = status === 'running';
+  const isCompleted = status === 'completed';
+  const isFailed = status === 'failed';
 
-  const cardBg    = status === 'running'
-    ? (isDark ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.04)')
-    : status === 'completed'
-      ? (isDark ? 'transparent' : 'rgba(16,185,129,0.03)')
-      : (isDark ? 'rgba(15,23,42,0.6)' : '#ffffff');
-
-  const cardBorder = status === 'running'
-    ? (isDark ? '#f59e0b' : '#fbbf24')
-    : status === 'completed'
-      ? (isDark ? '#10b981' : '#6ee7b7')
-      : (isDark ? '#1e293b' : '#e2e8f0');
+  const statusColor = isRunning ? '#fff' : (isCompleted ? '#10b981' : (isFailed ? '#ef4444' : '#475569'));
 
   return (
-    <MotiView
-      from={{ opacity: 0, translateY: 10 }}
-      animate={{ opacity: 1, translateY: 0 }}
-      transition={{ type: 'timing', duration: 400 }}
-      className="rounded-2xl p-4 mb-4"
-      style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}
-    >
-      {/* Card Header */}
-      <View className="flex-row items-center">
-        {/* Icon */}
-        <View
-          className="w-10 h-10 rounded-xl items-center justify-center"
-          style={{ backgroundColor: config.color + '18', position: 'relative' }}
-        >
-          <Icon size={20} color={config.color} />
-          {status === 'running' && (
+    <View style={[styles.agentCard, isRunning && styles.cardActive, { borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#e2e8f0' }]}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => setExpanded(!expanded)}
+        style={styles.cardHeader}
+      >
+        <View style={styles.cardInfo}>
+          <View style={[styles.iconContainer, isRunning && styles.iconActive]}>
+            <Icon size={18} color={statusColor} />
+          </View>
+          <View>
+            <Text style={[styles.agentName, { color: isDark ? '#f8fafc' : '#0f172a' }]}>{meta.name.toUpperCase()}</Text>
+            <Text style={styles.agentDesc}>{meta.desc}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardStatus}>
+          {isRunning && (
             <MotiView
-              from={{ scale: 0.8, opacity: 0.3 }}
-              animate={{ scale: 1.5, opacity: 0 }}
-              transition={{ loop: true, duration: 1500, type: 'timing' }}
-              style={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                borderRadius: 10, backgroundColor: config.color,
-              }}
-            />
+              from={{ opacity: 0.3 }}
+              animate={{ opacity: 1 }}
+              transition={{ loop: true, duration: 800, type: 'timing' }}
+            >
+              <Activity size={14} color="#fff" />
+            </MotiView>
           )}
+          {isCompleted && <CheckCircle size={14} color="#10b981" />}
+          {isFailed && <AlertTriangle size={14} color="#ef4444" />}
+          <View style={styles.chevron}>
+            {expanded ? <ChevronUp size={14} color="#475569" /> : <ChevronDown size={14} color="#475569" />}
+          </View>
         </View>
+      </TouchableOpacity>
 
-        {/* Info */}
-        <View className="flex-1 ml-3">
-          <Text
-            className="text-sm font-bold tracking-wide"
-            style={{ color: status === 'completed' ? '#10b981' : (isDark ? '#e2e8f0' : '#0f172a') }}
+      <AnimatePresence>
+        {expanded && (
+          <MotiView
+            from={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            style={styles.cardDetails}
           >
-            {config.name}{status === 'completed' ? '  ✓' : ''}
-          </Text>
-          <Text
-            className="text-xs mt-0.5"
-            style={{ color: isDark ? '#475569' : '#94a3b8' }}
-          >
-            {config.desc}
-          </Text>
-        </View>
+            {trace ? (
+              <View style={styles.traceContainer}>
+                {trace.planning && <ReasoningBlock label="PLANNING" content={trace.planning} icon={Info} />}
+                {trace.reasoning && <ReasoningBlock label="REASONING" content={trace.reasoning} icon={TraceIcon} />}
+                {trace.decision && <ReasoningBlock label="DECISION" content={trace.decision} icon={Code} />}
+                {trace.action && <ReasoningBlock label="ACTION" content={trace.action} icon={Activity} />}
+              </View>
+            ) : (
+              <Text style={styles.emptyTrace}>_ no reasoning data available for this cycle</Text>
+            )}
+          </MotiView>
+        )}
+      </AnimatePresence>
+    </View>
+  );
+};
 
-        {/* Status Badge */}
-        <View
-          className="flex-row items-center px-2 py-1 rounded-lg gap-1"
-          style={{
-            backgroundColor: statusDisplay.color + '20',
-            borderWidth: 1,
-            borderColor: statusDisplay.color + '40',
-          }}
-        >
-          <StatusIcon size={11} color={statusDisplay.color} />
-          <Text className="text-xs font-bold" style={{ color: statusDisplay.color }}>
-            {statusDisplay.label}
-          </Text>
-        </View>
+const ExecutionTerminal = ({ logs, isDark }) => {
+  return (
+    <View style={[styles.terminal, { backgroundColor: isDark ? '#020617' : '#0f172a' }]}>
+      <View style={styles.terminalHeader}>
+        <Terminal size={14} color="#475569" />
+        <Text style={styles.terminalTitle}>SYSTEM KERNEL LOGS</Text>
       </View>
-
-      {/* Trace */}
-      {status === 'completed' && trace && (
-        <MotiView
-          from={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="mt-4 rounded-xl p-3"
-          style={{
-            backgroundColor: isDark ? '#0f172a' : '#f8fafc',
-            borderWidth: 1,
-            borderColor: isDark ? '#1e293b' : '#e2e8f0',
-          }}
-        >
-          <Text className="text-xs font-semibold mb-2" style={{ color: '#10b981' }}>
-            Execution Trace
-          </Text>
-          <Text className="text-xs leading-5" style={{ color: isDark ? '#94a3b8' : '#64748b' }} numberOfLines={4}>
-            {trace.reasoning}
-          </Text>
-        </MotiView>
-      )}
-    </MotiView>
+      <ScrollView
+        style={styles.terminalScroll}
+        contentContainerStyle={styles.terminalContent}
+        nestedScrollEnabled
+      >
+        {logs.length === 0 ? (
+          <Text style={styles.terminalEmpty}>_ awaiting orchestration triggers...</Text>
+        ) : (
+          logs.map((log, i) => (
+            <View key={i} style={styles.logLine}>
+              <Text style={styles.logPrompt}>{'>'}</Text>
+              <Text style={styles.logText}>
+                {log.agent && <Text style={styles.logAgent}>[{log.agent.toUpperCase()}] </Text>}
+                {log.message}
+              </Text>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
   );
 };
 
 const OrchestrationPanel = () => {
-  const { activeAgents, logs, sharedState, traces, isWorkflowRunning, theme } = useSelector(state => state.orchestration);
+  const { activeAgents, logs, traces, theme } = useSelector(state => state.orchestration);
   const isDark = theme === 'dark';
 
-  const activeAgentOrder = [
-    'supervisor', 'intent', 'extraction', 'memory',
-    'knowledge', 'matching', 'booking', 'scheduling', 'communication',
-  ];
+  const agentKeys = Object.keys(AGENT_META);
 
   return (
     <ScrollView
-      className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
-      contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+      style={[styles.container, { backgroundColor: isDark ? '#020617' : '#f8fafc' }]}
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
-      <View className="flex-row items-center mb-3">
-        <Cpu size={22} color="#a78bfa" />
-        <Text
-          className="text-xl font-black ml-3 tracking-tight"
-          style={{ color: isDark ? '#f8fafc' : '#0f172a' }}
-        >
-          Agent Pipeline
-        </Text>
+      <PipelineGraph />
+
+      <View style={styles.sectionHeader}>
+        <Layers size={16} color="#475569" />
+        <Text style={styles.sectionTitle}>AGENT STACK</Text>
       </View>
 
-      {/* Divider */}
-      <View
-        className="h-px mb-5"
-        style={{ backgroundColor: isDark ? '#1e293b' : '#e2e8f0' }}
-      />
+      <View style={styles.stack}>
+        {agentKeys.map(key => {
+          const meta = AGENT_META[key];
+          const status = activeAgents[meta.stateKey] || activeAgents[key] || 'idle';
+          const trace = traces.find(t => t.agent === key || t.agent === meta.stateKey);
 
-      {/* Section Label */}
-      <Text
-        className="text-xs font-black tracking-widest mb-4 ml-1"
-        style={{ color: isDark ? '#475569' : '#94a3b8' }}
-      >
-        LIVE AGENT STATUS
-      </Text>
-
-      {/* Agent Cards */}
-      {activeAgentOrder.map((key) => {
-        const status = activeAgents[key] || 'idle';
-        const trace  = traces.find(t => t.agent === key);
-        return (
-          <AgentCard key={key} agentKey={key} status={status} trace={trace} isDark={isDark} />
-        );
-      })}
-
-      {/* Empty State */}
-      {!isWorkflowRunning && Object.values(activeAgents).every(v => v === 'idle') && (
-        <View className="h-36 items-center justify-center">
-          <View className={`w-14 h-14 rounded-2xl items-center justify-center mb-3 ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-            <Clock size={28} color={isDark ? '#1e293b' : '#cbd5e1'} />
-          </View>
-          <Text
-            className="text-sm"
-            style={{ color: isDark ? '#475569' : '#94a3b8' }}
-          >
-            Waiting for orchestration input...
-          </Text>
-        </View>
-      )}
-
-      {/* Execution Log */}
-      <View className="flex-row items-center mt-8 mb-4 gap-2">
-        <Terminal size={16} color={isDark ? '#475569' : '#94a3b8'} />
-        <Text
-          className="text-xs font-black tracking-widest"
-          style={{ color: isDark ? '#475569' : '#94a3b8' }}
-        >
-          EXECUTION LOG
-        </Text>
-      </View>
-      <View
-        className="rounded-xl p-4"
-        style={{
-          backgroundColor: isDark ? '#020617' : '#ffffff',
-          borderWidth: 1,
-          borderColor: isDark ? '#1e293b' : '#e2e8f0',
-        }}
-      >
-        {logs.length === 0 ? (
-          <Text className="text-xs italic" style={{ color: isDark ? '#475569' : '#94a3b8' }}>
-            No execution events recorded.
-          </Text>
-        ) : (
-          logs.map((log, index) => (
-            <View key={index} className="flex-row mb-2">
-              <Text className="font-bold mr-2" style={{ color: '#fbbf24' }}>{'>'}</Text>
-              <View className="flex-row flex-wrap flex-1">
-                <Text className="text-xs font-bold" style={{ color: '#a78bfa' }}>
-                  {log.agent || 'SYSTEM'}:{' '}
-                </Text>
-                <Text className="text-xs" style={{ color: isDark ? '#cbd5e1' : '#334155' }}>
-                  {log.message}
-                </Text>
-              </View>
-            </View>
-          ))
-        )}
+          return (
+            <AgentCard
+              key={key}
+              agentKey={key}
+              meta={meta}
+              status={status}
+              trace={trace}
+              isDark={isDark}
+            />
+          );
+        })}
       </View>
 
-      {/* Shared State */}
-      <View className="flex-row items-center mt-8 mb-4 gap-2">
-        <Layers size={16} color={isDark ? '#475569' : '#94a3b8'} />
-        <Text
-          className="text-xs font-black tracking-widest"
-          style={{ color: isDark ? '#475569' : '#94a3b8' }}
-        >
-          SHARED STATE (LANGGRAPH)
-        </Text>
-      </View>
-      <View
-        className="rounded-xl p-4"
-        style={{
-          backgroundColor: isDark ? 'rgba(30,41,59,0.3)' : '#f1f5f9',
-          borderWidth: 1,
-          borderColor: isDark ? '#1e293b' : '#e2e8f0',
-        }}
-      >
-        <Text
-          className="text-xs"
-          style={{ color: isDark ? '#60a5fa' : '#3b82f6', fontFamily: 'monospace' }}
-        >
-          {JSON.stringify(sharedState, (key, value) => {
-            if (key === 'embedding' || key === 'embeddings') return '[Filtered: Vector Embedding Array]';
-            if (Array.isArray(value) && value.length > 50 && typeof value[0] === 'number') return `[Float Array length ${value.length}]`;
-            if (typeof value === 'string' && value.length > 100) return value.substring(0, 100) + '...';
-            return value;
-          }, 2)}
-        </Text>
-      </View>
+      <ExecutionTerminal logs={logs} isDark={isDark} />
     </ScrollView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  content: {
+    padding: 24,
+    paddingBottom: 60,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 20,
+    marginTop: 12,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#475569',
+    letterSpacing: 2,
+  },
+  stack: {
+    gap: 12,
+    marginBottom: 32,
+  },
+  agentCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardActive: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  cardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  iconActive: {
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  agentName: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  agentDesc: {
+    fontSize: 10,
+    color: '#475569',
+    marginTop: 2,
+  },
+  cardStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  chevron: {
+    marginLeft: 4,
+  },
+  cardDetails: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  traceContainer: {
+    padding: 16,
+    gap: 20,
+  },
+  reasoningBlock: {
+    gap: 6,
+  },
+  reasoningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reasoningLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#475569',
+    letterSpacing: 1,
+  },
+  reasoningText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 18,
+    paddingLeft: 18,
+  },
+  emptyTrace: {
+    padding: 16,
+    fontSize: 10,
+    color: '#334155',
+    fontStyle: 'italic',
+  },
+  terminal: {
+    borderRadius: 16,
+    height: 240,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    overflow: 'hidden',
+  },
+  terminalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingHorizontal: 16,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  terminalTitle: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#475569',
+    letterSpacing: 1.5,
+  },
+  terminalScroll: {
+    flex: 1,
+  },
+  terminalContent: {
+    padding: 16,
+  },
+  terminalEmpty: {
+    fontSize: 11,
+    color: '#1e293b',
+    fontStyle: 'italic',
+  },
+  logLine: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  logPrompt: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: 'bold',
+  },
+  logText: {
+    fontSize: 11,
+    color: '#94a3b8',
+    lineHeight: 16,
+    flex: 1,
+  },
+  logAgent: {
+    color: '#64748b',
+    fontWeight: '900',
+  },
+});
 
 export default OrchestrationPanel;

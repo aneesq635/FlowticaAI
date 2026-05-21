@@ -2220,7 +2220,10 @@ def create_direct_booking():
         # Sourced strictly from service_providers and users
         service_doc = db.service_providers.find_one({
             "provider_supabase_id": provider_id,
-            "service_type": service_type
+            "$or": [
+                {"service_type": service_type},
+                {"service_name": service_type}
+            ]
         })
         
         if not service_doc:

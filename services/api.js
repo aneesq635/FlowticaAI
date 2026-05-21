@@ -1,8 +1,9 @@
 import { Alert } from 'react-native';
 
-const DEFAULT_BASE_URL = 'http://10.73.20.155:5000';
+const DEFAULT_BASE_URL = 'http://10.73.21.129:5000';
 const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BASE_URL;
-const TIMEOUT_MS = 10000; // 10 seconds timeout
+const TIMEOUT_MS = 10000;    // 10 seconds — default
+const AI_TIMEOUT_MS = 90000;  // 90 seconds — for AI/orchestration endpoints
 
 class ApiClient {
   constructor() {
@@ -28,12 +29,13 @@ class ApiClient {
       console.log(`[API REQUEST][${requestId}] Headers:`, JSON.stringify(options.headers));
     }
 
-    // Set up AbortController for timeout handling
+    // Set up AbortController for timeout handling (per-request override supported)
+    const timeout = options.timeout ?? TIMEOUT_MS;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.warn(`[API REQUEST][${requestId}] TIMEOUT triggered after ${TIMEOUT_MS}ms`);
+      console.warn(`[API REQUEST][${requestId}] TIMEOUT triggered after ${timeout}ms`);
       controller.abort();
-    }, TIMEOUT_MS);
+    }, timeout);
 
     const fetchOptions = {
       ...options,
@@ -49,7 +51,7 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       console.log(`[API RESPONSE][${requestId}] Status: ${response.status} ${response.statusText}`);
-      
+
       const contentType = response.headers.get('content-type') || '';
       let responseData = null;
 
@@ -59,7 +61,7 @@ class ApiClient {
       } else {
         const textData = await response.text();
         console.log(`[API RESPONSE][${requestId}] Raw Text Body (Non-JSON):`, textData.substring(0, 500));
-        
+
         // If it's an HTML response, it's typically an unexpected server error page (like a 404 or 500)
         if (contentType.includes('text/html')) {
           throw new Error(`Server returned unexpected HTML error page (Status: ${response.status})`);
@@ -77,10 +79,11 @@ class ApiClient {
 
     } catch (error) {
       clearTimeout(timeoutId);
-      
+
       let errorDescription = error.message;
       if (error.name === 'AbortError') {
-        errorDescription = `Network timeout after ${TIMEOUT_MS}ms. Server might be down or unreachable.`;
+        const timeout = options.timeout ?? TIMEOUT_MS;
+        errorDescription = `Network timeout after ${timeout}ms. Server might be down or unreachable.`;
       }
 
       console.error(`[API REQUEST][${requestId}] === FAILURE ===`);
@@ -107,6 +110,16 @@ class ApiClient {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+    });
+  }
+
+  /** POST with extended 90s timeout — use for AI/orchestration endpoints */
+  async aiPost(endpoint, body = {}, headers = {}) {
+    return this.request(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      timeout: AI_TIMEOUT_MS,
     });
   }
 

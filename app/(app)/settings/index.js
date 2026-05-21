@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const { dbUser, setDbUser } = useDbUser();
   const [isUpdatingType, setIsUpdatingType] = useState(false);
   const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
-
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const fetchUser = async () => {
     try {
       if (!user?.id) return;
@@ -134,7 +134,7 @@ export default function SettingsPage() {
             <Text className={`text-xs font-black uppercase tracking-widest mb-3 ml-1 mt-4 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>Account</Text>
             <Row icon={UserCircle} label="My Profile" sub="Edit contact & location" onPress={() => router.push('/profile')} />
             <Row icon={RefreshCw} label="Switch Role" sub="Toggle between buyer & seller" onPress={() => setConfirmModalOpen(true)} />
-            <Row icon={LogOut} label="Sign Out" danger onPress={logout} />
+            <Row icon={LogOut} label="Sign Out" danger onPress={() => setLogoutModalOpen(true)} />
           </>
         )}
 
@@ -190,6 +190,51 @@ export default function SettingsPage() {
                 ) : (
                   <Text className={`font-black text-sm ${isDark ? 'text-slate-900' : 'text-white'}`}>Confirm</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Logout Confirmation Modal */}
+      <Modal
+        isVisible={logoutModalOpen}
+        onBackdropPress={() => setLogoutModalOpen(false)}
+        useNativeDriver
+      >
+        <View className={`rounded-[40px] p-8 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+          <View className={`w-16 h-16 rounded-3xl items-center justify-center mb-6 ${isDark ? 'bg-red-500/10 border border-red-500/20' : 'bg-red-50'}`}>
+            <LogOut size={32} color="#ef4444" />
+          </View>
+
+          <Text className={`text-xl font-black mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Sign Out
+          </Text>
+          <Text className={`mb-8 text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            Are you sure you want to sign out of your account?
+          </Text>
+
+          <View className="flex-row gap-4">
+            <View className="flex-1">
+              <TouchableOpacity
+                onPress={() => setLogoutModalOpen(false)}
+                className={`rounded-2xl items-center justify-center border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}
+                style={{ minHeight: 48 }}
+              >
+                <Text className={`font-black text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View className="flex-1">
+              <TouchableOpacity
+                onPress={() => {
+                  setLogoutModalOpen(false);
+                  logout();
+                }}
+                className="rounded-2xl items-center justify-center bg-red-500"
+                style={{ minHeight: 48 }}
+              >
+                <Text className="font-black text-sm text-white">Sign Out</Text>
               </TouchableOpacity>
             </View>
           </View>

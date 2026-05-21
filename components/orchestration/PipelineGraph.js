@@ -1,57 +1,125 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Animated, Easing, StyleSheet } from 'react-native';
 import { useSelector } from 'react-redux';
-import { MotiView } from 'moti';
-import { ChevronDown, Zap } from 'lucide-react-native';
+import { MotiView, AnimatePresence } from 'moti';
+import {
+  User, Cpu, Zap, Database, Layers,
+  CheckCircle, MessageSquare, ArrowRight, ShieldCheck,
+  Search, Calculator, Clock, MessageCircle, AlertCircle
+} from 'lucide-react-native';
 
-const PipelineNode = ({ name, active, completed, isDark, isLast }) => {
-  const bgColor = active
-    ? (isDark ? '#1e3a5f' : '#eff6ff')
-    : completed
-      ? (isDark ? '#0d2b1f' : '#f0fdf4')
-      : (isDark ? 'rgba(30,41,59,0.4)' : 'rgba(241,245,249,0.9)');
+const NODE_WIDTH = 140;
+const CONNECTOR_WIDTH = 60;
 
-  const borderColor = active
-    ? '#3b82f6'
-    : completed
-      ? '#10b981'
-      : (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)');
+const AnimatedPath = ({ active }) => {
+  const pulseAnim = useRef(new Animated.Value(0)).current;
 
-  const textColor = active
-    ? (isDark ? '#93c5fd' : '#1d4ed8')
-    : completed
-      ? '#10b981'
-      : (isDark ? '#475569' : '#94a3b8');
+  useEffect(() => {
+    if (active) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 2,
+            duration: 0,
+            useNativeDriver: true,
+          })
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(0);
+    }
+  }, [active]);
+
+  const translateX = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-CONNECTOR_WIDTH, CONNECTOR_WIDTH],
+  });
 
   return (
-    <View className="items-center w-full">
+    <View style={styles.connectorContainer}>
+      <View style={[styles.connectorLine, { backgroundColor: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)' }]} />
+      {active && (
+        <Animated.View
+          style={[
+            styles.pulseContainer,
+            { transform: [{ translateX }] }
+          ]}
+        >
+          <View style={styles.pulseNode} />
+        </Animated.View>
+      )}
+    </View>
+  );
+};
+
+const PipelineNode = ({ name, icon: Icon, active, completed, isDark, type = 'agent' }) => {
+  const isBoundary = type === 'boundary';
+
+  const bgColor = active
+    ? (isDark ? '#0f172a' : '#f8fafc')
+    : completed
+      ? (isDark ? '#021e16' : '#ecfdf5')
+      : (isDark ? 'rgba(15,23,42,0.6)' : '#ffffff');
+
+  const borderColor = active
+    ? '#ffffff'
+    : completed
+      ? '#10b981'
+      : (isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0');
+
+  return (
+    <View style={styles.nodeWrapper}>
       <MotiView
-        animate={{ scale: active ? 1.02 : 1 }}
-        transition={{ type: 'timing', duration: 300 }}
-        className="w-full rounded-xl py-3 px-4 items-center justify-center"
-        style={{ backgroundColor: bgColor, borderWidth: 1, borderColor, position: 'relative', overflow: 'hidden' }}
+        animate={{
+          scale: active ? 1.05 : 1,
+          borderColor: borderColor,
+        }}
+        transition={{ type: 'timing', duration: 400 }}
+        style={[
+          styles.nodeCircle,
+          {
+            backgroundColor: bgColor,
+            borderWidth: 1.5,
+            width: isBoundary ? 60 : 100,
+            height: isBoundary ? 60 : 100,
+            borderRadius: isBoundary ? 30 : 20,
+          }
+        ]}
       >
-        <Text className="text-sm font-semibold tracking-wide" style={{ color: textColor }}>
-          {name}{completed ? '  ✓' : ''}
-        </Text>
+        <Icon size={isBoundary ? 24 : 32} color={active ? '#fff' : (completed ? '#10b981' : '#475569')} />
 
         {active && (
           <MotiView
-            from={{ opacity: 0.4, scale: 1 }}
-            animate={{ opacity: 0, scale: 1.6 }}
-            transition={{ loop: true, duration: 1500, type: 'timing' }}
-            style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              borderRadius: 12, borderWidth: 2, borderColor: '#3b82f6',
-            }}
+            from={{ opacity: 0.5, scale: 1 }}
+            animate={{ opacity: 0, scale: 1.4 }}
+            transition={{ loop: true, duration: 2000, type: 'timing' }}
+            style={[StyleSheet.absoluteFill, styles.activeGlow, { borderRadius: isBoundary ? 30 : 20 }]}
           />
         )}
       </MotiView>
-
-      {!isLast && (
-        <View className="py-1.5">
-          <ChevronDown size={15} color={isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)'} />
-        </View>
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.nodeLabel,
+          { color: active ? '#fff' : (isDark ? '#94a3b8' : '#475569') }
+        ]}
+      >
+        {name.toUpperCase()}
+      </Text>
+      {active && (
+        <MotiView
+          from={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={styles.activeTag}
+        >
+          <Text style={styles.activeText}>RUNNING</Text>
+        </MotiView>
       )}
     </View>
   );
@@ -61,74 +129,184 @@ const PipelineGraph = () => {
   const { pipeline, activeAgents } = useSelector(state => state.orchestration);
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
 
-  const nodes = [
-    { id: 'intent',      label: 'Intent Agent'      },
-    { id: 'extraction',  label: 'Extraction Agent'  },
-    { id: 'matching',    label: 'Matching Agent'     },
-    { id: 'pricing',     label: 'Pricing Agent'      },
-    { id: 'scheduling',  label: 'Scheduling Agent'   },
-    { id: 'booking',     label: 'Booking Agent'      },
-    { id: 'followup',    label: 'Follow-up Agent'    },
+  // Comprehensive Agent List mapped to Redux State Keys
+  const agents = [
+    { id: 'supervisor', stateKey: 'Supervisor', label: 'Supervisor', icon: Cpu },
+    { id: 'intent', stateKey: 'Intent Agent', label: 'Intent', icon: Zap },
+    { id: 'extraction', stateKey: 'Extraction Agent', label: 'Extraction', icon: Search },
+    { id: 'knowledge', stateKey: 'Knowledge Agent', label: 'Knowledge', icon: Database },
+    { id: 'matching', stateKey: 'Matching Agent', label: 'Matching', icon: Layers },
+    { id: 'pricing', stateKey: 'Pricing Agent', label: 'Pricing', icon: Calculator },
+    { id: 'booking', stateKey: 'Booking Agent', label: 'Booking', icon: ShieldCheck },
+    { id: 'scheduling', stateKey: 'Scheduling Agent', label: 'Scheduling', icon: Clock },
+    { id: 'followup', stateKey: 'Follow-up Agent', label: 'Support', icon: MessageCircle },
   ];
 
+  const getAgentStatus = (agent) => {
+    // Check both lowercase and exact state key
+    return activeAgents[agent.stateKey] || activeAgents[agent.id] || 'idle';
+  };
+
   return (
-    <View
-      className="mb-6 p-5 rounded-2xl"
-      style={{
-        backgroundColor: isDark ? 'rgba(15,23,42,0.5)' : 'rgba(248,250,252,0.9)',
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
-      }}
-    >
-      {/* Header Badge */}
-      <View
-        className="self-start flex-row items-center px-3 py-1.5 rounded-full mb-5"
-        style={{
-          backgroundColor: isDark ? '#0f172a' : '#f1f5f9',
-          borderWidth: 1,
-          borderColor: isDark ? '#1e293b' : '#e2e8f0',
-        }}
+    <View style={[styles.container, { backgroundColor: isDark ? 'rgba(2,6,23,0.3)' : '#f1f5f9' }]}>
+      <View style={styles.header}>
+        <View style={styles.headerDot} />
+        <Text style={styles.headerTitle}>ORCHESTRATION ENGINE NODES</Text>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
-        <Zap size={12} color={isDark ? '#94a3b8' : '#64748b'} />
-        <Text
-          className="ml-2 text-xs font-black uppercase tracking-widest"
-          style={{ color: isDark ? '#64748b' : '#94a3b8' }}
-        >
-          Live Pipeline
-        </Text>
-      </View>
+        {/* User Input Boundary */}
+        <PipelineNode
+          name="User"
+          icon={User}
+          type="boundary"
+          completed={Object.values(activeAgents).some(v => v === 'completed' || v === 'running')}
+          isDark={isDark}
+        />
 
-      {/* Nodes */}
-      <View className="items-center w-full">
-        {nodes.map((node, index) => (
-          <PipelineNode
-            key={node.id}
-            name={node.label}
-            active={pipeline === node.id}
-            completed={activeAgents[node.id] === 'completed'}
-            isDark={isDark}
-            isLast={index === nodes.length - 1}
-          />
-        ))}
+        <AnimatedPath active={getAgentStatus(agents[0]) === 'running' || pipeline === agents[0].id} />
 
-        {/* Final Node */}
-        <View className="mt-3">
-          <View
-            className="px-5 py-2 rounded-full"
-            style={{
-              backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)',
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.25)',
-            }}
-          >
-            <Text className="text-xs font-black" style={{ color: '#10b981' }}>
-              User Satisfaction
-            </Text>
-          </View>
-        </View>
-      </View>
+        {/* Dynamic Agent Nodes */}
+        {agents.map((agent, index) => {
+          const status = getAgentStatus(agent);
+          const nextAgent = agents[index + 1];
+          const isActive = pipeline === agent.id || status === 'running';
+
+          return (
+            <React.Fragment key={agent.id}>
+              <PipelineNode
+                name={agent.label}
+                icon={agent.icon}
+                active={isActive}
+                completed={status === 'completed'}
+                isDark={isDark}
+              />
+              {index < agents.length - 1 && (
+                <AnimatedPath
+                  active={
+                    (status === 'completed' && getAgentStatus(nextAgent) === 'running') ||
+                    (pipeline === nextAgent.id)
+                  }
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        <AnimatedPath active={getAgentStatus(agents[agents.length - 1]) === 'completed'} />
+
+        {/* Output Boundary */}
+        <PipelineNode
+          name="Result"
+          icon={CheckCircle}
+          type="boundary"
+          completed={getAgentStatus(agents[agents.length - 1]) === 'completed'}
+          isDark={isDark}
+        />
+      </ScrollView>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 32,
+    gap: 10,
+  },
+  headerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
+    shadowColor: '#fff',
+    shadowRadius: 10,
+    shadowOpacity: 0.5,
+  },
+  headerTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#94a3b8',
+    letterSpacing: 2,
+  },
+  scrollContent: {
+    alignItems: 'center',
+    paddingRight: 40,
+  },
+  nodeWrapper: {
+    alignItems: 'center',
+    width: 100,
+  },
+  nodeCircle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  activeGlow: {
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  nodeLabel: {
+    marginTop: 12,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  activeTag: {
+    position: 'absolute',
+    top: -24,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  activeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  connectorContainer: {
+    width: CONNECTOR_WIDTH,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: -10,
+  },
+  connectorLine: {
+    width: '100%',
+    height: 2,
+    borderRadius: 1,
+  },
+  pulseContainer: {
+    position: 'absolute',
+    width: CONNECTOR_WIDTH,
+    height: 10,
+    justifyContent: 'center',
+  },
+  pulseNode: {
+    width: 8,
+    height: 2,
+    backgroundColor: '#fff',
+    borderRadius: 1,
+    shadowColor: '#fff',
+    shadowRadius: 10,
+    shadowOpacity: 1,
+  },
+});
 
 export default PipelineGraph;

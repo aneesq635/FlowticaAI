@@ -39,7 +39,7 @@ export const LocationService = {
      */
     async geocode(address) {
         try {
-            const response = await api.post('/api/location/geocode', { address });
+            const response = await api.aiPost('/api/location/geocode', { address });
             if (response.success && response.location_data) {
                 return response.location_data;
             }
@@ -55,7 +55,7 @@ export const LocationService = {
      */
     async reverseGeocode(latitude, longitude) {
         try {
-            const response = await api.post('/api/location/reverse-geocode', { latitude, longitude });
+            const response = await api.aiPost('/api/location/reverse-geocode', { latitude, longitude });
             if (response.success && response.location_data) {
                 return response.location_data;
             }
@@ -71,7 +71,7 @@ export const LocationService = {
      */
     async autocomplete(input) {
         try {
-            const response = await api.post('/api/location/autocomplete', { input });
+            const response = await api.aiPost('/api/location/autocomplete', { input });
             if (response.success && response.predictions) {
                 return response.predictions;
             }
@@ -87,7 +87,7 @@ export const LocationService = {
      */
     async getPlaceDetails(placeId) {
         try {
-            const response = await api.post('/api/location/details', { place_id: placeId });
+            const response = await api.aiPost('/api/location/details', { place_id: placeId });
             if (response.success) {
                 return response.location_data;
             }
