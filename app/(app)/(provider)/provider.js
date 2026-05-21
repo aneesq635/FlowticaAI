@@ -37,7 +37,8 @@ import {
   ChevronRight,
   TrendingUp,
   Layout,
-  User
+  User,
+  Phone
 } from 'lucide-react-native';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
@@ -251,7 +252,8 @@ export default function ProviderDashboard() {
   const fetchRequests = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const res = await fetch(`${backendUrl}/api/providers/requests/${user.id}`);
+      // Phase 6.9: Filter for only actionable items (pending or countered) (Requirement)
+      const res = await fetch(`${backendUrl}/api/providers/requests/${user.id}?status=pending`);
       const data = await res.json();
       if (data.success) {
         setRequests(data.requests || []);
@@ -384,8 +386,17 @@ export default function ProviderDashboard() {
           }
         };
         socket.on('new_service_request', handleNewRequest);
+        
+        // Phase 6.9: Listen for status updates to refresh list (Requirement 6)
+        const handleStatusUpdate = (data) => {
+          console.log("[PROVIDER DASHBOARD] Request status update received:", data);
+          fetchRequests();
+        };
+        socket.on('request_status_updated', handleStatusUpdate);
+
         return () => {
           socket.off('new_service_request', handleNewRequest);
+          socket.off('request_status_updated', handleStatusUpdate);
         };
       }
     } else {
@@ -582,6 +593,9 @@ export default function ProviderDashboard() {
       languages: svc.languages || [],
       phone: svc.phone || '',
       email: svc.email || user?.email || '',
+      travel_radius: String(svc.travel_radius || '10'),
+      working_hours: svc.working_hours || '09:00 - 18:00',
+      emergency_availability: svc.emergency_availability || false,
     });
     setTools(svc.tools || []);
     setIsCreatingService(true);
@@ -829,15 +843,27 @@ export default function ProviderDashboard() {
                         <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{req.location}</Text>
                       </View>
 
-                      {/* In the request card, replace the location_data block: */}
-                      {/* REPLACE this in your requests.map() in ProviderDashboard: */}
-                      {req.location_data && (
-                        <MiniMap
-                          latitude={req.location_data.latitude}
-                          longitude={req.location_data.longitude}
-                          address={req.location_data.address}
-                          height={130}
-                        />
+                      {req.customer_location_data && (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            const lat = req.customer_location_data.latitude;
+                            const lng = req.customer_location_data.longitude;
+                            const label = req.customer_name || 'Customer Location';
+                            const url = Platform.select({
+                              ios: `maps:0,0?q=${label}@${lat},${lng}`,
+                              android: `geo:0,0?q=${lat},${lng}(${label})`
+                            });
+                            Linking.openURL(url);
+                          }}
+                          className="rounded-2xl overflow-hidden mb-3"
+                        >
+                          <MiniMap
+                            latitude={req.customer_location_data.latitude}
+                            longitude={req.customer_location_data.longitude}
+                            address={req.customer_location_data.address}
+                            height={130}
+                          />
+                        </TouchableOpacity>
                       )}
                       <View className="flex-row items-center">
                         <DollarSign size={12} color="#64748b" />
@@ -854,10 +880,19 @@ export default function ProviderDashboard() {
                       {(req.customer_phone || req.contact_phone) &&
                         (req.customer_phone !== 'Not provided' || req.contact_phone !== 'Not provided') && (
                           <View className={`mt-2 pt-2 border-t border-dashed ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
-                            <Text className={`text-[9px] font-bold uppercase mb-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Client Contact</Text>
-                            <Text className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                              📞 {req.customer_phone && req.customer_phone !== 'Not provided' ? req.customer_phone : req.contact_phone}
-                            </Text>
+                            <Text className={`text-[9px] font-bold uppercase mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Client Contact</Text>
+                            <TouchableOpacity 
+                              onPress={() => {
+                                const phone = req.customer_phone && req.customer_phone !== 'Not provided' ? req.customer_phone : req.contact_phone;
+                                Linking.openURL(`tel:${phone}`);
+                              }}
+                              className={`flex-row items-center py-2 px-3 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
+                            >
+                              <Phone size={14} color={isDark ? '#3b82f6' : '#2563eb'} />
+                              <Text className={`text-xs ml-2 font-black ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                                {req.customer_phone && req.customer_phone !== 'Not provided' ? req.customer_phone : req.contact_phone}
+                              </Text>
+                            </TouchableOpacity>
                           </View>
                         )}
                       {req.status === 'counter_offer' && (
@@ -920,7 +955,12 @@ export default function ProviderDashboard() {
           <TouchableOpacity
             onPress={() => {
               setEditingServiceId(null);
-              reset({ name: '', service_type: '', specialization: '', description: '', location: '', hourly_rate: '', currency: 'PKR', experience_years: '', languages: [], phone: '', email: user?.email || '' });
+              reset({ 
+                name: '', service_type: '', specialization: '', description: '', location: '', 
+                hourly_rate: '', currency: 'PKR', experience_years: '', languages: [], 
+                phone: '', email: user?.email || '',
+                travel_radius: '10', working_hours: '09:00 - 18:00', emergency_availability: false 
+              });
               setTools([]);
               setIsCreatingService(true);
             }}
@@ -1107,7 +1147,7 @@ export default function ProviderDashboard() {
                   </View>
                 </View>
                 <View className="mb-4">
-                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Coverage Area</Text>
+                  <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Primary Service Location (Geocodable)</Text>
                   <Controller control={control} name="location" rules={{ required: true }}
                     render={({ field: { onChange, value } }) => (
                       <TextInput
@@ -1119,6 +1159,57 @@ export default function ProviderDashboard() {
                       />
                     )}
                   />
+                </View>
+
+                {/* --- Phase 6.8: Structured Data Fields --- */}
+                <View className="flex-row space-x-3 mb-4">
+                  <View className="flex-1 mr-1.5">
+                    <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Travel Radius (km)</Text>
+                    <Controller control={control} name="travel_radius" rules={{ required: true }}
+                      render={({ field: { onChange, value } }) => (
+                        <TextInput
+                          className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                          keyboardType="numeric"
+                          placeholder="10"
+                          placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                          value={value}
+                          onChangeText={onChange}
+                        />
+                      )}
+                    />
+                  </View>
+                  <View className="flex-1 ml-1.5">
+                    <Text className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Working Hours</Text>
+                    <Controller control={control} name="working_hours" rules={{ required: true }}
+                      render={({ field: { onChange, value } }) => (
+                        <TextInput
+                          className={`rounded-2xl px-5 py-4 font-bold border ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-900'}`}
+                          placeholder="09:00 - 18:00"
+                          placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                          value={value}
+                          onChangeText={onChange}
+                        />
+                      )}
+                    />
+                  </View>
+                </View>
+
+                <View className="flex-row items-center justify-between mb-6 p-4 rounded-3xl border border-dashed border-slate-200">
+                   <View>
+                     <Text className={`text-xs font-black uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>Emergency Service</Text>
+                     <Text className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Available for urgent requests 24/7</Text>
+                   </View>
+                   <Controller 
+                     control={control} 
+                     name="emergency_availability"
+                     render={({ field: { onChange, value } }) => (
+                       <Switch
+                         value={value}
+                         onValueChange={onChange}
+                         trackColor={{ false: '#e2e8f0', true: '#000' }}
+                       />
+                     )}
+                   />
                 </View>
               </View>
 

@@ -17,6 +17,7 @@ const SOCKET_URL = process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BASE_URL;
 class SocketService {
   constructor() {
     this.socket = null;
+    this.currentUserId = null;
     console.log(`[SOCKET SERVICE] Initialized with target URL: ${SOCKET_URL}`);
   }
 
@@ -74,6 +75,10 @@ class SocketService {
 
       this.socket.on('reconnect', (attempt) => {
         console.log(`[SOCKET RECONNECT SUCCESS] Reconnected after ${attempt} attempts!`);
+        // Recover user room membership if we have a stored user ID
+        if (this.currentUserId) {
+          this.join(this.currentUserId);
+        }
       });
 
       // --- BUSINESS LOGIC EVENT HANDLERS ---
@@ -135,6 +140,15 @@ class SocketService {
         store.dispatch(addLog({ type: 'success', message: 'Workflow Completed', data }));
       });
 
+      this.socket.on('booking_confirmed', (data) => {
+        console.log('[SOCKET EVENT] booking_confirmed payload:', JSON.stringify(data));
+        store.dispatch(updateSharedState({ latest_request_status: 'confirmed' }));
+        store.dispatch(addLog({ 
+          level: 'success', 
+          message: 'Booking Confirmed! View in Booked Services.'
+        }));
+      });
+
       this.socket.on('chat_message', (payload) => {
         console.log('[SOCKET EVENT] chat_message payload:', JSON.stringify(payload));
         const state = store.getState();
@@ -148,13 +162,22 @@ class SocketService {
           message: {
             role: payload.role,
             content: payload.content,
-            agent: payload.agent
+            agent: payload.agent,
+            providers: payload.providers
           } 
         }));
       });
 
     } catch (err) {
       console.error('[SOCKET SERVICE] Critical exception inside connect():', err);
+    }
+  }
+
+  join(userId) {
+    if (this.socket && userId) {
+      this.currentUserId = userId; // Track for reconnection recovery
+      console.log(`[SOCKET SERVICE] Joining room for user: ${userId}`);
+      this.socket.emit('join', { userId });
     }
   }
 

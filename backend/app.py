@@ -61,6 +61,14 @@ if os.getenv("GOOGLE_MAPS_API_KEY"):
 # Initialize Logger with SocketIO
 logger.socketio = socketio
 
+@socketio.on('join')
+def on_join(data):
+    user_id = data.get('userId')
+    if user_id:
+        from flask_socketio import join_room
+        join_room(user_id)
+        print(f"[SOCKET] User {user_id} joined room: {user_id}")
+
 # ── PATCH 1 ───────────────────────────────────────────────────────────────────
 # Add this near the top of app.py, after the imports section.
 # This dict maps conversation_id → threading.Lock() and prevents two socket
@@ -305,6 +313,130 @@ def map_messages_to_langchain(stored_messages):
 
 
  
+def finalize_negotiation_resolution(request_id, active_request, action="accepted"):
+    """
+    Standardized finalization of a negotiation into a confirmed booking.
+    Ensures transactional consistency between active_request and booking collections.
+    """
+    try:
+        from bson import ObjectId
+        customer_id = active_request.get("customer_supabase_id")
+        provider_id = active_request.get("provider_supabase_id")
+        conversation_id = active_request.get("conversation_id")
+        
+        if action == "accepted":
+            final_price = active_request.get("counter_offer_price") or active_request.get("offered_price")
+            final_date = active_request.get("counter_offer_date") or active_request.get("requested_date")
+            final_time = active_request.get("counter_offer_time") or active_request.get("requested_time")
+            
+            # Deep Snapshot from Source-of-Truth
+            service_snap = db.service_providers.find_one({
+                "provider_supabase_id": provider_id,
+                "service_type": active_request.get("service_type")
+            })
+            cust_snap = db.users.find_one({"supabase_id": customer_id})
+            
+            booking_doc = {
+                "active_request_id": str(request_id),
+                "conversation_id": conversation_id,
+                "customer_supabase_id": customer_id,
+                "provider_supabase_id": provider_id,
+                "service_type": active_request.get("service_type"),
+                "scheduled_time": f"{final_date}T{final_time}",
+                "requested_date": final_date,
+                "requested_time": final_time,
+                "price": final_price,
+                "status": "confirmed",
+                "confirmed_at": datetime.utcnow(),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "snapshot": {
+                    "provider_name": service_snap.get("provider_name") if service_snap else active_request.get("provider_name"),
+                    "provider_phone": service_snap.get("provider_phone") if service_snap else active_request.get("provider_phone"),
+                    "provider_avatar": service_snap.get("provider_avatar") if service_snap else active_request.get("provider_avatar"),
+                    "provider_location_data": service_snap.get("provider_location_data") if service_snap else active_request.get("provider_location_data"),
+                    "customer_name": cust_snap.get("name") if cust_snap else active_request.get("customer_name"),
+                    "customer_phone": cust_snap.get("phone") if cust_snap else active_request.get("customer_phone"),
+                    "customer_avatar": cust_snap.get("avatar_url") if cust_snap else active_request.get("customer_avatar"),
+                    "customer_location_data": cust_snap.get("location_data") if cust_snap else active_request.get("customer_location_data")
+                }
+            }
+            db.bookings.insert_one(booking_doc)
+            
+            # Availability block
+            db.provider_availability.update_one(
+                {"provider_supabase_id": provider_id},
+                {"$push": {f"booked_slots.{final_date}": final_time}},
+                upsert=True
+            )
+            
+            # Notification logic (for Provider Dashboard)
+            db.follow_up.insert_one({
+                "user_supabase_id": provider_id,
+                "role": "seller",
+                "type": "booking_confirmed",
+                "title": "Booking Confirmed!",
+                "message": f"Customer accepted your counter offer for {active_request.get('service_type')}.",
+                "related_id": str(request_id),
+                "created_at": datetime.utcnow()
+            })
+            
+            # Update active_request status
+            history_entry = {
+                "role": "customer",
+                "action": "accept",
+                "timestamp": datetime.utcnow()
+            }
+            db.active_requests.update_one(
+                {"_id": ObjectId(request_id)},
+                {
+                    "$set": {"status": "confirmed", "updated_at": datetime.utcnow()},
+                    "$push": {"negotiation_history": history_entry}
+                }
+            )
+            
+            # Standardized Payloads to BOTH rooms
+            socketio.emit("request_status_updated", {
+                "request_id": str(request_id),
+                "status": "confirmed"
+            }, room=provider_id)
+            
+            socketio.emit("booking_confirmed", {
+                "request_id": str(request_id),
+                "conversation_id": conversation_id,
+                "status": "confirmed"
+            }, room=customer_id)
+            
+            # Persist into chat history
+            if conversation_id:
+                conv_model.add_message(
+                    conversation_id,
+                    "system",
+                    "Counter offer accepted. Booking confirmed.",
+                    metadata={"type": "counter_offer_accepted", "request_id": str(request_id)}
+                )
+            return True
+        else:
+            # Rejection flow
+            history_entry = {
+                "role": "customer",
+                "action": "reject",
+                "timestamp": datetime.utcnow()
+            }
+            db.active_requests.update_one(
+                {"_id": ObjectId(request_id)},
+                {
+                    "$set": {"status": "rejected", "updated_at": datetime.utcnow()},
+                    "$push": {"negotiation_history": history_entry}
+                }
+            )
+            socketio.emit('request_status_updated', {"request_id": str(request_id), "status": "rejected"}, room=provider_id)
+            socketio.emit('request_status_updated', {"request_id": str(request_id), "status": "rejected"}, room=customer_id)
+            return True
+    except Exception as e:
+        print(f"[NEGOTIATION RESOLUTION ERROR] {e}")
+        return False
+
 def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=None):
     """Executes the complete multi-agent LangGraph workflow for a message turn and streams updates."""
     # Try resolving from conversation collection if anonymous
@@ -318,11 +450,36 @@ def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=
         except Exception as conv_err:
             print(f"[ORCHESTRATOR] Failed to resolve conversation user_id: {conv_err}")
             
-    print(f"\n[ORCHESTRATOR] === New Message Turn Started ===")
-    print(f"[ORCHESTRATOR] Message: {message_text}")
-    print(f"[ORCHESTRATOR] Conversation: {conversation_id}")
     print(f"[ORCHESTRATOR] User ID: {user_id}")
     print(f"[ORCHESTRATOR] Target Socket SID: {socketio_sid}")
+
+    # --- PHASE C.1: HIGH-PRIORITY NEGOTIATION CHECK ---
+    # Intercept acceptance intents to prevent AI fallback into provider search
+    try:
+        from bson import ObjectId
+        active_neg = db.active_requests.find_one({
+            "conversation_id": conversation_id,
+            "status": "countered"
+        })
+        
+        if active_neg:
+            acceptance_tokens = {"accept", "ok", "confirm", "yes", "deal", "yup", "yeah", "yep", "sure", "confirmed", "okay", "i accept"}
+            msg_clean = message_text.lower().strip().rstrip('.!?*() ')
+            if any(token in msg_clean for token in acceptance_tokens):
+                print(f"[ORCHESTRATOR] Detected acceptance for active negotiation: {active_neg['_id']}")
+                success = finalize_negotiation_resolution(active_neg['_id'], active_neg, action="accepted")
+                if success:
+                    # Inform frontend via legacy chat_message so the UI updates
+                    socketio.emit('chat_message', {
+                        'role': 'assistant',
+                        'content': "Counter-offer accepted! Your booking has been confirmed.",
+                        'agent': 'Orchestrator',
+                        'conversation_id': conversation_id,
+                        'type': 'counter_offer_accepted'
+                    }, room=user_id)
+                    return # EXIT EARLY - DO NOT RUN GRAPH
+    except Exception as neg_inter_err:
+        print(f"[ORCHESTRATOR WARNING] Negotiation interception failed: {neg_inter_err}")
 
 
 
@@ -450,21 +607,27 @@ def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=
                 # Final Response handling
                 if "frontier_response" in state_update:
                     content = safe_text(state_update["frontier_response"])
-                    print(f"[SOCKET] Emitting final assistant response from '{safe_text(node_name)}' delta!")
-                    print(f"[SOCKET PAYLOAD] {content[:100]}...")
-                    
+                    # Get shortlisted providers for UI cards (Phase 3)
+                    full_state = graph.get_state(config).values
+                    shortlist = serialize_value(full_state.get("shortlisted_providers", []))
+
                     custom_emit('chat_message', {
                         'role': 'assistant',
                         'content': content,
                         'agent': 'Frontier Agent',
-                        'conversation_id': conversation_id
+                        'conversation_id': conversation_id,
+                        'providers': shortlist
                     })
                     has_emitted_final_reply = True
                     final_reply_text = content
                     print("[SOCKET] Final response emitted successfully via node delta.")
                     
                     if conversation_id:
-                        conv_model.add_message(conversation_id, "assistant", content, agent="Frontier Agent")
+                        conv_model.add_message(
+                            conversation_id, "assistant", content, 
+                            agent="Frontier Agent", 
+                            metadata={"providers": shortlist}
+                        )
 
         print("[ORCHESTRATOR DIAGNOSTIC] Graph stream loop execution finished.")
 
@@ -482,19 +645,25 @@ def run_orchestration_flow(message_text, conversation_id, user_id, socketio_sid=
             if not has_emitted_final_reply:
                 content = safe_text(final_state.get("frontier_response"))
                 if content:
-                    print(f"[SOCKET WARNING] Delta stream missed frontier_response emission! Triggering aggregated final state fallback emit.")
-                    print(f"[SOCKET PAYLOAD] {content[:100]}...")
+                    # Get shortlisted providers for UI cards (Phase 3)
+                    shortlist = serialize_value(final_state.get("shortlisted_providers", []))
+
                     custom_emit('chat_message', {
                         'role': 'assistant',
                         'content': content,
                         'agent': 'Frontier Agent',
-                        'conversation_id': conversation_id
+                        'conversation_id': conversation_id,
+                        'providers': shortlist
                     })
                     has_emitted_final_reply = True
                     final_reply_text = content
                     print("[SOCKET] Fallback response emitted successfully.")
                     if conversation_id:
-                        conv_model.add_message(conversation_id, "assistant", content, agent="Frontier Agent")
+                        conv_model.add_message(
+                            conversation_id, "assistant", content, 
+                            agent="Frontier Agent", 
+                            metadata={"providers": shortlist}
+                        )
                 else:
                     print(f"[ORCHESTRATOR ERROR] Critical! No 'frontier_response' found in the final state values!")
             
@@ -1248,42 +1417,42 @@ def update_provider_availability():
 
 def build_enriched_service_document(data, existing_id=None):
     from bson import ObjectId
+    # 0. Initial values from Payload (Priority 1 for Phone)
     provider_supabase_id = data.get("provider_supabase_id")
+    provider_phone = data.get("phone") or ""
     
     # 1. Fetch provider details from provider_info
     provider_doc = db.provider_info.find_one({"supabase_id": provider_supabase_id})
     provider_name = "Unknown Provider"
-    provider_phone = ""
     provider_email = ""
     provider_location = ""
-    provider_rating = 5.0
-    reliability_score = 0.95
-    review_count = 12
-    cancellation_rate = 0.02
+    provider_rating = 0.0
+    reliability_score = 0.0
+    review_count = 0
+    cancellation_rate = 0.0
     provider_location_data = {}
     
     if provider_doc:
         provider_name = provider_doc.get("name") or provider_name
-        provider_phone = provider_doc.get("phone") or provider_phone
+        if not provider_phone:
+            provider_phone = provider_doc.get("phone") or ""
         provider_email = provider_doc.get("email") or provider_email
         provider_location = provider_doc.get("location") or provider_location
         provider_location_data = provider_doc.get("location_data") or {}
-        provider_rating = float(provider_doc.get("rating") or provider_rating)
-        reliability_score = float(provider_doc.get("reliability_score") or reliability_score)
-        review_count = int(provider_doc.get("review_count") or review_count)
-        cancellation_rate = float(provider_doc.get("cancellation_rate") or cancellation_rate)
+        provider_rating = float(provider_doc.get("rating") or 0.0)
+        reliability_score = float(provider_doc.get("reliability_score") or 0.0)
+        review_count = int(provider_doc.get("review_count") or 0)
+        cancellation_rate = float(provider_doc.get("cancellation_rate") or 0.0)
         
-    # Fallback/merge with users collection
+    # Fallback/merge with users collection (Priority 2 for Phone)
     user_doc = db.users.find_one({"supabase_id": provider_supabase_id})
     if user_doc:
         if not provider_name or provider_name == "Unknown Provider":
             provider_name = user_doc.get("name") or provider_name
         if not provider_phone:
-            provider_phone = user_doc.get("phone") or provider_phone
+            provider_phone = user_doc.get("phone") or ""
         if not provider_email:
             provider_email = user_doc.get("email") or provider_email
-        if not provider_location:
-            provider_location = user_doc.get("location") or provider_location
         if not provider_location_data:
             provider_location_data = user_doc.get("location_data") or {}
 
@@ -1299,6 +1468,34 @@ def build_enriched_service_document(data, existing_id=None):
     experience_years = int(data.get("experience_years") or 0)
     languages = data.get("languages", [])
     
+    # Phase 6.8: New Optional Structured Fields
+    travel_radius = float(data.get("travel_radius") or 10.0)
+    working_hours = data.get("working_hours") or "09:00 - 18:00"
+    emergency_availability = data.get("emergency_availability") in [True, "true", "True"]
+    response_speed = int(data.get("response_speed") or 30) # Default 30 mins
+    
+    # Fix Location Ownership (Official Rule: location_data MUST be Service Location)
+    # Geocode the service address
+    service_location_data = {}
+    try:
+        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY"))
+        geocode_result = gmaps.geocode(service_location)
+        if geocode_result:
+            loc = geocode_result[0]['geometry']['location']
+            service_location_data = {
+                "latitude": loc['lat'],
+                "longitude": loc['lng'],
+                "address": geocode_result[0].get('formatted_address', service_location)
+            }
+        else:
+            # Fallback if geocoding fails but we have previous data
+            if existing_id:
+                existing = db.service_providers.find_one({"_id": ObjectId(existing_id)})
+                if existing:
+                    service_location_data = existing.get("location_data", {})
+    except Exception as e:
+        print(f"[GEOCODE ERROR] {e}")
+
     # Build complete snapshot service document
     enriched = {
         "provider_supabase_id": provider_supabase_id,
@@ -1306,7 +1503,7 @@ def build_enriched_service_document(data, existing_id=None):
         "provider_phone": provider_phone,
         "provider_email": provider_email,
         "provider_location": provider_location,
-        "provider_location_data": provider_location_data,
+        "location_data": service_location_data, # Official coordinates for the service
         "provider_rating": provider_rating,
         
         "service_name": service_name,
@@ -1319,10 +1516,17 @@ def build_enriched_service_document(data, existing_id=None):
         "experience_years": experience_years,
         "languages": languages,
         
-        # Legacy/Compatibility mappings to preserve existing frontend dashboard card/matching UI
+        # Phase 6.8: Real Technical Data
+        "travel_radius": travel_radius,
+        "working_hours": working_hours,
+        "emergency_availability": emergency_availability,
+        "response_speed": response_speed,
+        
+        # Legacy/Compatibility mappings
         "name": provider_name,
         "location": service_location,
         "rating": provider_rating,
+        "phone": provider_phone, # Phase 6.8: Ensure 'phone' field is also populated
         "pricing": {
             "hourly_rate": hourly_rate,
             "currency": currency
@@ -1480,6 +1684,7 @@ def get_conversation_context(conversation_id):
                     "role": m.get("role"),
                     "content": m.get("content"),
                     "agent": m.get("agent"),
+                    "providers": m.get("metadata", {}).get("providers"),
                     "timestamp": m.get("timestamp").isoformat() if m.get("timestamp") else None
                 } for i, m in enumerate(messages)
             ],
@@ -1512,8 +1717,13 @@ from datetime import datetime
 @app.route("/api/providers/requests/<provider_supabase_id>", methods=["GET"])
 def get_provider_requests(provider_supabase_id):
     try:
-        print(f"--- API: Fetching incoming requests for provider: {provider_supabase_id} ---")
-        requests_cursor = db.active_requests.find({"provider_supabase_id": provider_supabase_id}).sort("created_at", -1)
+        status = request.args.get("status")
+        query = {"provider_supabase_id": provider_supabase_id}
+        if status:
+            query["status"] = status
+            
+        print(f"--- API: Fetching requests for provider: {provider_supabase_id}, status: {status} ---")
+        requests_cursor = db.active_requests.find(query).sort("created_at", -1)
         active_reqs = []
         for r in requests_cursor:
             r["_id"] = str(r["_id"])
@@ -1539,265 +1749,222 @@ def delete_provider_request(request_id):
         print(f"!!! API ERROR (delete_provider_request): {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/bookings/respond", methods=["POST"])
 @app.route("/api/providers/requests/<request_id>/respond", methods=["POST"])
-def respond_to_request(request_id):
+def respond_to_request(request_id=None):
+    """Phase B: Provider responds with approved, denied, or countered."""
     try:
         data = request.json
+        # Handle both route patterns
+        if not request_id:
+            request_id = data.get("request_id")
+            
         status = data.get("status")  # 'approved', 'denied', or 'counter_offer'
+        
         print(f"--- API: Provider responding to request {request_id} with status: {status} ---")
         
+        req_doc = db.active_requests.find_one({"_id": ObjectId(request_id)})
+        if not req_doc:
+            return jsonify({"error": "Request not found"}), 404
+            
+        customer_id = req_doc.get("customer_supabase_id")
+        
+        # 1. Update active_request Status & Negotiation Data
         update_fields = {
             "status": status,
             "updated_at": datetime.utcnow()
         }
         
         if status == "counter_offer":
-            update_fields.update({
-                "counter_price": data.get("counter_price"),
-                "counter_date": data.get("counter_date"),
-                "counter_time": data.get("counter_time"),
-                "counter_note": data.get("counter_note")
-            })
+            counter_offer_data = {
+                "price": data.get("counter_price"),
+                "date": data.get("counter_date"),
+                "time": data.get("counter_time"),
+                "message": data.get("counter_note")
+            }
+            
+            # Update active_request with standardized fields and history
+            history_entry = {
+                "role": "provider",
+                "action": "counter",
+                "price": counter_offer_data["price"],
+                "date": counter_offer_data["date"],
+                "time": counter_offer_data["time"],
+                "note": counter_offer_data["message"],
+                "timestamp": datetime.utcnow()
+            }
+            
+            db.active_requests.update_one(
+                {"_id": ObjectId(request_id)},
+                {
+                    "$set": {
+                        "counter_offer_price": counter_offer_data["price"],
+                        "counter_offer_date": counter_offer_data["date"],
+                        "counter_offer_time": counter_offer_data["time"],
+                        "counter_note": counter_offer_data["message"],
+                        "status": "countered",
+                        "updated_at": datetime.utcnow()
+                    },
+                    "$push": {"negotiation_history": history_entry}
+                }
+            )
+            status = "countered"
+            
+            # Real-time Propagation to BOTH rooms
+            customer_supabase_id = req_doc.get("customer_supabase_id")
+            conversation_id = req_doc.get("conversation_id")
+            provider_name = req_doc.get("provider_name")
+            provider_id = req_doc.get("provider_supabase_id")
+            
+            payload = {
+                "request_id": str(request_id),
+                "conversation_id": conversation_id,
+                "provider_name": provider_name,
+                "provider_id": provider_id,
+                "customer_id": customer_supabase_id,
+                "counter_offer": {
+                    "price": counter_offer_data["price"],
+                    "requested_date": counter_offer_data["date"],
+                    "requested_time": counter_offer_data["time"],
+                    "note": counter_offer_data["message"]
+                },
+                "status": "countered"
+            }
+            
+            # Emit to customer room
+            socketio.emit("counter_offer_received", payload, room=customer_supabase_id)
+            # Emit to provider room for sync
+            socketio.emit("request_status_updated", payload, room=provider_id)
+            
+            # PERSIESTENCE: Inject into chat history so it survives refresh
+            if conversation_id:
+                conv_model.add_message(
+                    conversation_id, 
+                    "assistant", 
+                    f"I've sent a counter-offer: {counter_offer_data['price']} PKR on {counter_offer_data['date']}.",
+                    agent="Provider",
+                    metadata={
+                        "type": "counter_offer",
+                        "request_id": str(request_id),
+                        "counter_price": counter_offer_data["price"],
+                        "counter_date": counter_offer_data["date"],
+                        "counter_time": counter_offer_data["time"],
+                        "counter_note": counter_offer_data["message"],
+                        "provider_name": provider_name
+                    }
+                )
+            
+            print(f"[SOCKET] Counter-offer emitted and persisted for customer: {customer_supabase_id}")
+            return jsonify({"success": True, "status": "countered"})
             
         db.active_requests.update_one(
             {"_id": ObjectId(request_id)},
             {"$set": update_fields}
         )
         
-        # Fetch request details to build notification / booking
+        # 2. If approved, CREATE a finalized transactional booking entry
+        if status == "approved":
+            # Update status to confirmed as per Phase B rules
+            db.active_requests.update_one(
+                {"_id": ObjectId(request_id)},
+                {"$set": {"status": "confirmed", "updated_at": datetime.utcnow()}}
+            )
+            status = "confirmed"
+
+            final_date = req_doc.get("counter_date") or req_doc.get("requested_date")
+            final_time = req_doc.get("counter_time") or req_doc.get("requested_time")
+            
+            service_snap = db.service_providers.find_one({
+                "provider_supabase_id": req_doc.get("provider_supabase_id"),
+                "service_type": req_doc.get("service_type")
+            })
+            cust_snap = db.users.find_one({"supabase_id": customer_id})
+            
+            booking_doc = {
+                "active_request_id": str(request_id),
+                "customer_supabase_id": customer_id,
+                "provider_supabase_id": req_doc.get("provider_supabase_id"),
+                "service_type": req_doc.get("service_type"),
+                "scheduled_time": f"{final_date}T{final_time}",
+                "requested_date": final_date,
+                "requested_time": final_time,
+                "price": req_doc.get("counter_price") or req_doc.get("offered_price"),
+                "status": "confirmed",
+                "confirmed_at": datetime.utcnow(),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "snapshot": {
+                    "provider_name": service_snap.get("provider_name") if service_snap else req_doc.get("provider_name"),
+                    "provider_phone": service_snap.get("provider_phone") if service_snap else req_doc.get("provider_phone"),
+                    "provider_avatar": service_snap.get("provider_avatar") if service_snap else req_doc.get("provider_avatar"),
+                    "provider_location_data": service_snap.get("provider_location_data") if service_snap else req_doc.get("provider_location_data"),
+                    "customer_name": cust_snap.get("name") if cust_snap else req_doc.get("customer_name"),
+                    "customer_phone": cust_snap.get("phone") if cust_snap else req_doc.get("customer_phone"),
+                    "customer_avatar": cust_snap.get("avatar_url") if cust_snap else req_doc.get("customer_avatar"),
+                    "customer_location_data": cust_snap.get("location_data") if cust_snap else req_doc.get("customer_location_data")
+                }
+            }
+            db.bookings.insert_one(booking_doc)
+            
+            # Correction 6: Availability block
+            db.provider_availability.update_one(
+                {"provider_supabase_id": req_doc.get("provider_supabase_id")},
+                {"$push": {f"booked_slots.{final_date}": final_time}},
+                upsert=True
+            )
+
+        # 3. Notification Logic
+        try:
+            db.follow_up.insert_one({
+                "user_supabase_id": customer_id,
+                "role": "buyer",
+                "type": status,
+                "title": f"Request {status.capitalize()}",
+                "message": f"Your request for {req_doc.get('service_type')} has been {status}.",
+                "related_id": str(request_id),
+                "created_at": datetime.utcnow()
+            })
+            # Emit Socket (Correction 8: Refresh pending list)
+            socketio.emit('request_status_updated', {"request_id": str(request_id), "status": status, "user_id": customer_id})
+        except Exception as e:
+            print(f"[NOTIF ERROR] {e}")
+        
+        return jsonify({"success": True})
+            
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"!!! API ERROR (respond_to_request): {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/bookings/counter/respond", methods=["POST"])
+def respond_to_counter_offer():
+    """Phase B: Customer accepts or rejects a counter offer."""
+    try:
+        data = request.json
+        request_id = data.get("request_id")
+        action = data.get("action")  # 'accepted' or 'rejected'
+        conversation_id = data.get("conversation_id")
+        
+        print(f"--- API: Customer responding to counter: {request_id} ({action}) ---")
+        
         req_doc = db.active_requests.find_one({"_id": ObjectId(request_id)})
         if not req_doc:
             return jsonify({"error": "Request not found"}), 404
             
         customer_id = req_doc.get("customer_supabase_id")
-        conversation_id = req_doc.get("conversation_id")
+        provider_id = req_doc.get("provider_supabase_id")
         
-        # Try resolving from conversation collection if anonymous
-        if (not customer_id or customer_id == 'anonymous') and conversation_id:
-            try:
-                conv_doc = db.conversations.find_one({"_id": ObjectId(conversation_id)})
-                if conv_doc and conv_doc.get("user_id"):
-                    customer_id = conv_doc.get("user_id")
-                    # Update active_requests collection to keep DB state clean
-                    db.active_requests.update_one(
-                        {"_id": ObjectId(request_id)},
-                        {"$set": {"customer_supabase_id": customer_id}}
-                    )
-                    print(f"[RESPOND API] Resolved real customer_id={customer_id} from conversations and synced active_requests.")
-            except Exception as conv_err:
-                print(f"[RESPOND API] Failed to resolve conversation user_id: {conv_err}")
-        
-        # If approved, insert into permanent bookings collection
-        if status == "approved":
-            final_price = req_doc.get("counter_price") or req_doc.get("offered_price")
-            final_date = req_doc.get("counter_date") or req_doc.get("requested_date")
-            final_time = req_doc.get("counter_time") or req_doc.get("requested_time")
-            
-            # Retrieve complete Provider details from provider_info or req_doc
-            provider_supabase_id = req_doc.get("provider_supabase_id")
-            prov_doc = db.provider_info.find_one({"supabase_id": provider_supabase_id})
-            
-            provider_name = req_doc.get("provider_name")
-            provider_phone = "Not provided"
-            provider_email = "Not provided"
-            provider_location = "Not provided"
-            provider_avatar = ""
-            
-            if prov_doc:
-                provider_name = prov_doc.get("name") or provider_name
-                provider_phone = prov_doc.get("phone") or provider_phone
-                provider_email = prov_doc.get("email") or provider_email
-                provider_location = prov_doc.get("location") or provider_location
-                provider_avatar = prov_doc.get("avatar_url") or provider_avatar
-            
-            # Retrieve complete Customer details from users or req_doc
-            cust_doc = db.users.find_one({"supabase_id": customer_id})
-            
-            customer_name = req_doc.get("customer_name")
-            customer_phone = req_doc.get("customer_phone") or "Not provided"
-            customer_email = req_doc.get("customer_email") or "Not provided"
-            customer_location = req_doc.get("customer_location") or "Not provided"
-            customer_avatar = req_doc.get("customer_avatar") or ""
-            
-            if cust_doc:
-                customer_name = cust_doc.get("name") or customer_name
-                customer_phone = cust_doc.get("phone") or customer_phone
-                customer_email = cust_doc.get("email") or customer_email
-                customer_location = cust_doc.get("location") or customer_location
-                customer_avatar = cust_doc.get("avatar_url") or customer_avatar
-            
-            booking_doc = {
-                # Provider Snapshot
-                "provider_supabase_id": provider_supabase_id,
-                "provider_name": provider_name,
-                "provider_phone": provider_phone,
-                "provider_email": provider_email,
-                "provider_location": provider_location,
-                "provider_avatar": provider_avatar,
-                
-                # Customer Snapshot
-                "customer_supabase_id": customer_id,
-                "customer_name": customer_name,
-                "customer_phone": customer_phone,
-                "customer_email": customer_email,
-                "customer_location": customer_location,
-                "customer_avatar": customer_avatar,
-                
-                # Service Details
-                "service_type": req_doc.get("service_type"),
-                "specialization": req_doc.get("specialization") or req_doc.get("service_type"),
-                "offered_price": req_doc.get("offered_price"),
-                "price": final_price,
-                "requested_date": final_date,
-                "requested_time": final_time,
-                "location": req_doc.get("location") or customer_location,
-                "location_data": req_doc.get("customer_location_data") or {},
-                "provider_location_data": req_doc.get("provider_location_data") or {},
-                "customer_location_data": req_doc.get("customer_location_data") or {},
-                "status": "confirmed",
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "conversation_id": conversation_id
-            }
-            
-            db.bookings.insert_one(booking_doc)
-            print(f"[BOOKINGS] Inserted complete snapshot booking document for customer={customer_id}, provider={provider_supabase_id}")
-            
-        # Create user notification in follow_up collection
-        title = "Request Approved!" if status == "approved" else ("New Counter Offer" if status == "counter_offer" else "Request Denied")
-        message = f"Your request for {req_doc.get('service_type')} has been approved by the provider." if status == "approved" else (
-            f"Provider countered with ${data.get('counter_price')} for {data.get('counter_date')} at {data.get('counter_time')}." if status == "counter_offer" else
-            f"Your request for {req_doc.get('service_type')} was declined."
-        )
-        
-        notif_doc = {
-            "user_supabase_id": customer_id,
-            "title": title,
-            "message": message,
-            "type": status,
-            "request_id": request_id,
-            "status": "unread",
-            "created_at": datetime.utcnow()
-        }
-        db.follow_up.insert_one(notif_doc)
-        
-        print(f"[REQUEST] Provider updated request {request_id} to status: {status}")
+        booking_id = None
+        # Use centralized resolution logic
+        success = finalize_negotiation_resolution(request_id, req_doc, action=action)
+        if success:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to finalize negotiation"}), 500
 
-        # Send proactive chat message inside the active conversation in real-time
-        if conversation_id:
-            try:
-                # Format proactive message based on status
-                if status == "approved":
-                    agent_message = f"Your request has been approved by {req_doc.get('specialization') or 'the provider'}. I have successfully booked your slot!"
-                elif status == "denied":
-                    agent_message = f"Apologies, but your request for {req_doc.get('service_type')} was declined by the provider."
-                elif status == "counter_offer":
-                    agent_message = f"{req_doc.get('specialization') or 'The provider'} has proposed an updated offer:\nPrice: ${data.get('counter_price')}/hr\nTime: {data.get('counter_date')}, {data.get('counter_time')}\n\nWould you like to accept this updated offer?"
-                else:
-                    agent_message = f"Your service request status is now: {status}."
-
-                # Add to DB conversation_messages
-                conv_model.add_message(conversation_id, "assistant", agent_message, agent="Frontier Agent")
-                
-                # Emit chat_message event so the chat panel updates instantly
-                socketio.emit('chat_message', {
-                    'role': 'assistant',
-                    'content': agent_message,
-                    'agent': 'Frontier Agent',
-                    'conversation_id': conversation_id
-                })
-                print(f"[ORCHESTRATOR] Successfully sent proactive agent message for request status update: '{status}'")
-            except Exception as msg_err:
-                print(f"[RESPOND API] Failed to send proactive assistant message: {msg_err}")
-
-        # Natively sync LangGraph thread checkpoints to avoid stale memory
-        conversation_id = req_doc.get("conversation_id")
-        if conversation_id:
-            print(f"[SYNC] Refreshing shared state for conversation/thread: {conversation_id}")
-            config = {"configurable": {"thread_id": conversation_id}}
-            try:
-                latest_state = graph.get_state(config)
-                if latest_state.values:
-                    booking_details = latest_state.values.get("booking_details", {}) or {}
-                    updated_booking = {
-                        **booking_details,
-                        "request_id": request_id,
-                        "status": status,
-                        "offered_price": data.get("counter_price") if status == "counter_offer" else req_doc.get("offered_price"),
-                        "requested_date": data.get("counter_date") if status == "counter_offer" else req_doc.get("requested_date"),
-                        "requested_time": data.get("counter_time") if status == "counter_offer" else req_doc.get("requested_time"),
-                        "provider_name": req_doc.get("specialization") or "Provider"
-                    }
-                    
-                    # Compute stages dynamically
-                    new_stage = "selection" if status in ("counter_offer", "denied") else "completion"
-                    new_workflow = "discovery" if status == "denied" else "booking_initiation"
-                    
-                    new_values = {
-                        "booking_details": updated_booking,
-                        "active_request_id": request_id,
-                        "latest_request_status": status,
-                        "last_provider_response": data.get("counter_note") or data.get("provider_note") or "",
-                        "negotiation_stage": status,
-                        "conversation_stage": new_stage,
-                        "workflow_stage": new_workflow
-                    }
-                    
-                    # Dynamic state checkpointer injection
-                    graph.update_state(config, new_values, as_node="booking")
-                    print(f"[SYNC] Shared state refreshed successfully inside checkpoint thread.")
-            except Exception as graph_err:
-                print(f"[RESPOND API] Failed to update LangGraph checkpointer state: {graph_err}")
-
-        # Store and Emit real-time notifications
-        try:
-            db.notifications.insert_one({
-                "user_supabase_id": customer_id,
-                "role": "buyer",
-                "type": status,
-                "title": title,
-                "message": message,
-                "related_id": request_id,
-                "status": "unread",
-                "created_at": datetime.now()
-            })
-            socketio.emit('booking_notification', {
-                "user_supabase_id": customer_id,
-                "title": title,
-                "message": message,
-                "type": status,
-                "request_id": request_id
-            })
-            print(f"[RESPOND API] Saved & emitted booking_notification for user: {customer_id}")
-        except Exception as notif_err:
-            print(f"[RESPOND API] Notification insert/emit skipped or failed: {notif_err}")
-
-        # Emit the requested realtime request_updated socket event
-        try:
-            payload = {
-                "request_id": request_id,
-                "status": status,
-                "offered_price": data.get("counter_price") if status == "counter_offer" else req_doc.get("offered_price"),
-                "requested_date": data.get("counter_date") if status == "counter_offer" else req_doc.get("requested_date"),
-                "requested_time": data.get("counter_time") if status == "counter_offer" else req_doc.get("requested_time"),
-                "provider_note": data.get("counter_note") or data.get("provider_note") or ""
-            }
-            socketio.emit('request_updated', payload)
-            print(f"[SOCKET] request_updated emitted: {payload}")
-        except Exception as socket_err2:
-            print(f"[RESPOND API] Socket emit request_updated failed: {socket_err2}")
-            
-        # Clean up active requests upon terminal state transitions (approved or denied)
-        if status in ("approved", "denied"):
-            try:
-                db.active_requests.delete_one({"_id": ObjectId(request_id)})
-                print(f"[CLEANUP] Deleted request {request_id} from active_requests after status transitions to {status}.")
-            except Exception as cleanup_err:
-                print(f"[CLEANUP] Error removing request from active_requests: {cleanup_err}")
-                
         return jsonify({"success": True})
     except Exception as e:
-        print(f"!!! API ERROR (respond_to_request): {str(e)}")
+        print(f"!!! API ERROR (respond_to_counter_offer): {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/bookings/customer/<customer_supabase_id>", methods=["GET"])
@@ -1810,6 +1977,7 @@ def get_customer_bookings(customer_supabase_id):
                 b["created_at"] = b["created_at"].isoformat()
         return jsonify({"success": True, "bookings": bookings})
     except Exception as e:
+        print(f"!!! API ERROR (get_customer_bookings): {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/bookings/provider/<provider_supabase_id>", methods=["GET"])
@@ -1965,6 +2133,161 @@ def cancel_booking(booking_id):
 
         return jsonify({"success": True})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- Phase 4: Direct Booking & Availability APIs ---
+
+@app.route("/api/providers/<supabase_id>/availability", methods=["GET"])
+def get_detailed_availability(supabase_id):
+    """Fetches blocked dates and taken slots for a provider."""
+    try:
+        date_str = request.args.get("date") # e.g. "2026-05-22"
+        print(f"--- API: Fetching availability for provider: {supabase_id} on {date_str} ---")
+        
+        # 1. Base availability settings (Phase 5 Refined)
+        avail_settings = db.provider_availability.find_one({"provider_supabase_id": supabase_id})
+        
+        # Optional structures
+        blocked_dates = avail_settings.get("blocked_dates", []) if avail_settings else []
+        weekly_schedule = avail_settings.get("weekly_schedule", {}) if avail_settings else {}
+        manual_blocked_slots = avail_settings.get("booked_slots", {}).get(date_str, []) if avail_settings else []
+        
+        # 2. Daily taken slots from bookings (Dynamic check)
+        query = {"provider_supabase_id": supabase_id, "status": {"$ne": "cancelled"}}
+        if date_str:
+            query["$or"] = [
+                {"scheduled_time": {"$regex": f"^{date_str}"}},
+                {"requested_date": date_str}
+            ]
+            
+        taken_bookings = list(db.bookings.find(query))
+        booking_taken = []
+        for b in taken_bookings:
+            s = b.get("scheduled_time") or b.get("requested_time")
+            if isinstance(s, str) and "T" in s:
+                booking_taken.append(s.split("T")[1][:5])
+            else:
+                booking_taken.append(s)
+
+        # Merge dynamic bookings with manual overrides
+        unique_taken = list(set(booking_taken + manual_blocked_slots))
+
+        return jsonify({
+            "success": True, 
+            "blocked_dates": blocked_dates,
+            "weekly_schedule": weekly_schedule,
+            "taken_slots": unique_taken
+        })
+    except Exception as e:
+        print(f"!!! API ERROR (get_detailed_availability): {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/bookings", methods=["POST"])
+def create_direct_booking():
+    """Phase A: Creates an active_request (Negotiation) ONLY. Booking is created later upon acceptance."""
+    try:
+        data = request.json
+        print(f"--- API: Creating INITIAL REQUEST: {data} ---")
+        
+        provider_id = data.get("provider_supabase_id")
+        customer_id = data.get("customer_supabase_id")
+        service_type = data.get("service_type")
+        scheduled_time = data.get("scheduled_time") # ISO String
+        price = data.get("price")
+        
+        # Phase 6.5: Detailed error reporting
+        missing = []
+        if not provider_id: missing.append("provider_supabase_id")
+        if not customer_id: missing.append("customer_supabase_id")
+        if not scheduled_time: missing.append("scheduled_time")
+        if missing:
+            error_msg = f"Missing required booking fields: {', '.join(missing)}"
+            return jsonify({"error": error_msg}), 400
+
+        # Note: We check conflict against FINALIZED bookings only (Correction 1)
+        existing = db.bookings.find_one({
+            "provider_supabase_id": provider_id,
+            "scheduled_time": scheduled_time,
+            "status": {"$ne": "cancelled"}
+        })
+        if existing:
+            return jsonify({"error": "This slot is already booked. Please select another time."}), 409
+            
+        booking_date = scheduled_time.split("T")[0]
+        booking_slot = scheduled_time.split("T")[1][:5]
+        
+        # Phase B: Deep Snapshot Copying (No placeholders/mocks)
+        # Sourced strictly from service_providers and users
+        service_doc = db.service_providers.find_one({
+            "provider_supabase_id": provider_id,
+            "service_type": service_type
+        })
+        
+        if not service_doc:
+            print(f"!!! [BOOKING ERROR] Service Provider NOT FOUND for ID: {provider_id}, Service: {service_type}")
+            return jsonify({"error": "Service provider not found or data mismatch."}), 404
+            
+        cust_doc = db.users.find_one({"supabase_id": customer_id})
+        if not cust_doc:
+            print(f"!!! [BOOKING ERROR] Customer NOT FOUND for ID: {customer_id}")
+            return jsonify({"error": "Customer profile not found."}), 404
+        
+        # Create Active Request (Negotiation single source of truth)
+        req_doc = {
+            "conversation_id": data.get("conversation_id"),
+            
+            # Provider Snapshot (Official Rule: Sourced STRICTLY from service_providers)
+            "provider_supabase_id": provider_id,
+            "provider_name": service_doc.get("provider_name"),
+            "provider_phone": service_doc.get("provider_phone"),
+            "provider_email": service_doc.get("provider_email"),
+            "provider_avatar": service_doc.get("provider_avatar", ""),
+            "provider_location": service_doc.get("service_location") or service_doc.get("provider_location"),
+            "provider_location_data": service_doc.get("provider_location_data") or service_doc.get("location_data", {}),
+            
+            "service_type": service_type,
+            "service_name": service_doc.get("service_name"),
+            "service_id": str(service_doc.get("_id")),
+            "specialization": service_doc.get("specialization"),
+            
+            "pricing": service_doc.get("pricing"),
+            "rating": service_doc.get("rating"),
+            "travel_radius": service_doc.get("travel_radius"),
+            "working_hours": service_doc.get("working_hours"),
+            "availability": service_doc.get("availability", []),
+            
+            # Customer Snapshot (Official Rule: From db.users collection)
+            "customer_supabase_id": customer_id,
+            "customer_name": cust_doc.get("name") if cust_doc else "Valued Client",
+            "customer_phone": cust_doc.get("phone") if cust_doc else "",
+            "customer_email": cust_doc.get("email") if cust_doc else "",
+            "customer_avatar": cust_doc.get("avatar_url") if cust_doc else "",
+            "customer_location": cust_doc.get("location") if cust_doc else "",
+            "customer_location_data": cust_doc.get("location_data") if cust_doc else data.get("location_data", {}),
+            
+            "offered_price": price,
+            "requested_date": booking_date,
+            "requested_time": booking_slot,
+            "location": data.get("location"),
+            "status": "pending",
+            "source": "direct_booking_flow",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = db.active_requests.insert_one(req_doc)
+        request_id = str(result.inserted_id)
+        
+        # Sync socket informing provider of the new request
+        socketio.emit('request_status_updated', {
+            "provider_id": provider_id,
+            "request_id": request_id,
+            "status": "pending"
+        })
+        
+        return jsonify({"success": True, "request_id": request_id})
+    except Exception as e:
+        print(f"!!! API ERROR (create_direct_booking): {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/notifications/<user_supabase_id>", methods=["GET"])

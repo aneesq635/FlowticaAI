@@ -111,6 +111,9 @@ function GlobalLayoutWrapper({ children }) {
       if (!user && protectedRoutes.includes(pathname)) {
         router.replace('/auth');
       }
+      if (user?.id) {
+        socketService.join(user.id);
+      }
     }
   }, [user, loading, pathname]);
 

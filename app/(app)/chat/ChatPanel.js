@@ -10,8 +10,14 @@ import { Card } from '../../../components/ui/Card';
 import LiveVoiceAssistant from '../../../components/orchestration/LiveVoiceAssistant';
 import { startVoiceSession } from '../../../store/liveAgentSlice';
 import {  Keyboard } from 'react-native';
+import ChatProviderCard from '../../../components/ChatProviderCard';
+import BookingModal from '../../../components/BookingModal';
+import MiniMap from '../../../components/MiniMap';
+import { useAuth } from '../../../components/AuthContext';
+import { Phone, CheckCircle, DollarSign, XCircle, Clock as ClockIcon, MapPin, Linking } from 'lucide-react-native';
+import { Alert } from 'react-native';
 
-const ChatMessage = ({ message }) => {
+const ChatMessage = ({ message, onBook, onRespondToCounter }) => {
   const isUser = message.role === 'user';
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
 
@@ -73,6 +79,104 @@ const ChatMessage = ({ message }) => {
           </Text>
         </View>
       )}
+
+      {/* Provider Cards Integration (Phase 3) */}
+      {!isUser && message.providers && message.providers.length > 0 && (
+        <View style={{ marginTop: 16, width: '100%' }}>
+          {message.providers.slice(0, 3).map((provider, idx) => (
+            <ChatProviderCard 
+              key={provider._id || idx} 
+              provider={provider} 
+              onBook={onBook}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* --- Phase 6.9: Structural Data Cards --- */}
+      
+      {/* 1. Counter Offer Card */}
+      {message.type === 'counter_offer' && (
+        <View className={`mt-4 p-4 rounded-3xl border ${isDark ? 'bg-orange-500/10 border-orange-500/20' : 'bg-orange-50 border-orange-200'}`}>
+          <Text className={`text-xs font-black uppercase mb-1 ${isDark ? 'text-orange-400' : 'text-orange-700'}`}>New Counter Offer</Text>
+          <Text className={`text-lg font-black mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>{message.counter_price} PKR</Text>
+          
+          <View className="flex-row items-center mb-3">
+             <Clock size={12} color={isDark ? '#f97316' : '#ea580c'} />
+             <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                {message.counter_date} at {message.counter_time}
+             </Text>
+          </View>
+
+          {message.status === 'countered' ? (
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => onRespondToCounter(message.request_id, 'accepted')}
+                className="flex-1 bg-black py-3 rounded-2xl items-center"
+              >
+                <Text className="text-white font-black text-xs">Accept</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onRespondToCounter(message.request_id, 'rejected')}
+                className={`flex-1 py-3 rounded-2xl items-center border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
+              >
+                <Text className={`font-black text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Decline</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="py-2 items-center">
+              <Text className="text-[10px] font-black uppercase text-slate-400">Response Sent: {message.status}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* 2. Booking Confirmation Card */}
+      {message.type === 'booking_confirmation' && (
+        <View className={`mt-4 p-4 rounded-3xl border ${isDark ? 'bg-green-500/10 border-green-500/20' : 'bg-green-50 border-green-200'}`}>
+          <View className="flex-row justify-between items-center mb-3">
+            <View>
+              <Text className="text-[10px] font-black uppercase text-green-500">Booking Confirmed</Text>
+              <Text className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{message.service_type}</Text>
+            </View>
+            <View className="w-10 h-10 rounded-full bg-green-500 items-center justify-center">
+              <CheckCircle size={20} color="#fff" />
+            </View>
+          </View>
+
+          <View className={`p-3 rounded-2xl mb-3 ${isDark ? 'bg-slate-800' : 'bg-white'}`}>
+             <View className="flex-row items-center mb-2">
+               <Clock size={14} color="#64748b" />
+               <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{message.date} at {message.time}</Text>
+             </View>
+             <View className="flex-row items-center">
+               <DollarSign size={14} color="#64748b" />
+               <Text className={`text-xs ml-2 font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{message.price} PKR</Text>
+             </View>
+          </View>
+
+          {message.location_data && (
+            <TouchableOpacity 
+              onPress={() => {
+                const { latitude, longitude } = message.location_data;
+                const url = Platform.select({
+                  ios: `maps:0,0?q=Booking@${latitude},${longitude}`,
+                  android: `geo:0,0?q=${latitude},${longitude}(Booking)`
+                });
+                Linking.openURL(url);
+              }}
+              className="rounded-2xl overflow-hidden"
+            >
+              <MiniMap 
+                latitude={message.location_data.latitude} 
+                longitude={message.location_data.longitude} 
+                address={message.location}
+                height={100}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
 
     {/* User Avatar - right side */}
@@ -132,6 +236,10 @@ const ChatPanel = () => {
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
   const isVoiceActive = useSelector(state => state.liveAgent.isVoiceSessionActive);
   
+  const [bookingModalVisible, setBookingModalVisible] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const { user } = useAuth();
+  
   const messages = useMemo(() => {
     const conv = conversations.find(c => (c.id === activeConversationId || c._id === activeConversationId));
     return conv?.messages || [];
@@ -164,12 +272,49 @@ React.useEffect(() => {
 }, []);
 
   useEffect(() => {
+    // Phase 6.9: Real-time Socket Sync (Requirement 6)
+    const socket = socketService.socket;
+    if (socket) {
+      const handleStatusUpdate = (data) => {
+        console.log("[CHAT PANEL] Request status updated in real-time:", data);
+        // We could re-fetch conversation here or update local state
+        // For now, let's just log. Redux chatSlice might already handle incoming status messages.
+      };
+      socket.on('request_status_updated', handleStatusUpdate);
+      return () => socket.off('request_status_updated', handleStatusUpdate);
+    }
+  }, []);
+
+  const handleRespondToCounter = async (requestId, action) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/bookings/counter/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: requestId, action })
+      });
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert("Success", `Counter-offer ${action}.`);
+      } else {
+        Alert.alert("Error", data.error || "Failed to respond.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "Could not reach server.");
+    }
+  };
+
+  useEffect(() => {
     if (scrollViewRef.current) {
       setTimeout(() => {
         scrollViewRef.current.scrollToEnd({ animated: true });
       }, 150);
     }
   }, [messages]);
+
+  const handleBookProvider = (provider) => {
+    setSelectedProvider(provider);
+    setBookingModalVisible(true);
+  };
 
   const handleSend = () => {
     console.log(`\n[CHAT PANEL] Send button clicked.`);
@@ -236,7 +381,12 @@ React.useEffect(() => {
             </MotiView>
           ) : (
             messages.map((msg, index) => (
-              <ChatMessage key={msg.id || index} message={msg} />
+              <ChatMessage 
+                key={msg.id || index} 
+                message={msg} 
+                onBook={handleBookProvider}
+                onRespondToCounter={handleRespondToCounter}
+              />
             ))
           )}
         </AnimatePresence>
@@ -303,6 +453,14 @@ React.useEffect(() => {
           }}
         />
       )}
+      {/* Booking Modal (Phase 4) */}
+      <BookingModal
+        visible={bookingModalVisible}
+        onClose={() => setBookingModalVisible(false)}
+        provider={selectedProvider}
+        customer_id={user?.id}
+        conversation_id={activeConversationId}
+      />
     </KeyboardAvoidingView>
   );
 };

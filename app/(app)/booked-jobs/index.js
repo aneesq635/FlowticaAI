@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, ScrollView, TouchableOpacity, Text, TextInput, Modal, Alert, ActivityIndicator, } from "react-native";
+import { View, ScrollView, TouchableOpacity, Text, TextInput, Modal, Alert, ActivityIndicator, Platform, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../../components/AuthContext";
@@ -344,13 +344,28 @@ export default function BookedJobs() {
                     </View>
                   ) : null}
 
-                  {booking.location_data?.latitude && (
-                    <MiniMap
-                      latitude={booking.location_data.latitude}
-                      longitude={booking.location_data.longitude}
-                      address={booking.location}
-                      height={120}
-                    />
+                  {booking.snapshot?.customer_location_data?.latitude && (
+                    <TouchableOpacity 
+                      onPress={() => {
+                        const lat = booking.snapshot.customer_location_data.latitude;
+                        const lng = booking.snapshot.customer_location_data.longitude;
+                        const label = booking.snapshot.customer_name || 'Customer Location';
+                        const latLng = `${lat},${lng}`;
+                        const url = Platform.select({
+                          ios: `maps:0,0?q=${label}@${latLng}`,
+                          android: `geo:0,0?q=${latLng}(${label})`,
+                        });
+                        Linking.openURL(url);
+                      }}
+                      className="rounded-2xl overflow-hidden mb-2"
+                    >
+                      <MiniMap
+                        latitude={booking.snapshot.customer_location_data.latitude}
+                        longitude={booking.snapshot.customer_location_data.longitude}
+                        address={booking.snapshot.customer_location_data.address || booking.location}
+                        height={120}
+                      />
+                    </TouchableOpacity>
                   )}
                 </View>
 

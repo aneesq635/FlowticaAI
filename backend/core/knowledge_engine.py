@@ -22,6 +22,7 @@ ROOT CAUSES FIXED:
 import re
 import json
 import logging
+import math
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -68,6 +69,23 @@ class HybridRetrievalEngine:
         self.db = db
         self.llm = llm
 
+    def _calculate_distance(self, lat1, lon1, lat2, lon2):
+        """Haversine formula to calculate distance in kilometers."""
+        if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+            return None
+        
+        R = 6371.0  # Earth radius in KM
+        
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        
+        a = (math.sin(dlat / 2)**2 + 
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
+             math.sin(dlon / 2)**2)
+        c = 2 * math.asin(math.sqrt(a))
+        
+        return R * c
+
     # ── Stage 0: Conversational reference detection ───────────────────────────
 
     def _is_conversational_reference(self, query: str) -> bool:
@@ -102,6 +120,17 @@ Example for "I need NESU Tution Services from NESU Qureshi":
   "provider_name": "NESU Qureshi",
   "location": "",
   "expanded_terms": ["tutoring", "home tutor", "teaching", "coaching", "study help"]
+}
+
+Example for "Mujhe AC wala chahiye parso sham ko":
+{
+  "intent": "search",
+  "service_name": "",
+  "service_type": "AC Repair",
+  "specialization": "HVAC technician",
+  "provider_name": "",
+  "location": "",
+  "expanded_terms": ["air conditioning", "cooling expert", "cooling repair", "split ac repair"]
 }"""
 
         try:
@@ -147,19 +176,50 @@ Example for "I need NESU Tution Services from NESU Qureshi":
             "ac": ["hvac", "air conditioning", "cooling", "ac repair"],
             "hvac": ["ac", "air conditioning", "cooling", "ac repair", "heating"],
             "clean": ["cleaning", "cleaner", "housekeeping", "maid", "deep clean"],
-            "tutor": ["tuition", "teaching", "education", "teacher", "classes"],
+            "tutor": ["tuition", "teaching", "education", "teacher", "classes", "academic help", "subject tutor"],
             "fix": ["repair", "maintenance", "technician", "handyman"],
-            "plumb": ["plumber", "plumbing", "pipe", "water"],
-            "mechanic": ["auto", "car repair", "vehicle", "automotive"]
+            "plumb": ["plumber", "plumbing", "pipe", "water", "leakage"],
+            "mechanic": ["auto", "car repair", "vehicle", "automotive", "engine fix", "oil change"]
+        }
+        
+        # Domain Filter: ensure fallbacks don't bleed across unrelated sectors
+        domains = {
+            "academic": ["tutor", "tuition", "teacher", "education"],
+            "maintenance": ["plumber", "electrician", "hvac", "ac", "mechanic", "fix", "handyman"],
+            "domestic": ["clean", "maid", "deep clean", "housekeeping"]
         }
         
         expanded = set(parsed.get("expanded_terms", []))
         q_lower = query.lower()
-        for key, syns in synonym_map.items():
-            if key in q_lower or key in parsed.get("service_type", "").lower() or key in parsed.get("specialization", "").lower():
-                expanded.update(syns)
         
-        parsed["expanded_terms"] = list(expanded)
+        # First, find which domain the user belongs to (if any)
+        active_domains = []
+        for d_name, d_keywords in domains.items():
+            if any(k in q_lower for k in d_keywords):
+                active_domains.append(d_name)
+        
+        # Expand ONLY within the detected domains
+        for key, syns in synonym_map.items():
+            # Check if keyword is in the query
+            if key in q_lower:
+                # Is this key part of an active domain?
+                is_safe = False
+                if not active_domains: # If no major domain detected, allow generic expansion
+                    is_safe = True 
+                else:
+                    for d in active_domains:
+                        if key in domains[d]:
+                            is_safe = True
+                            break
+                
+                if is_safe:
+                    expanded.update(syns)
+        
+        # Filter out generic stop words
+        stop_words = {"service", "need", "please", "want", "help", "mujhe", "chahiye", "karwane", "wala"}
+        parsed["expanded_terms"] = [t for t in expanded if t.lower() not in stop_words]
+        
+        print(f"[AUDIT] HybridRetrievalEngine | Expanded Terms (Safe): {parsed['expanded_terms']}")
         print(f"[AUDIT] HybridRetrievalEngine | Expanded Terms: {parsed['expanded_terms']}")
         return parsed
 
@@ -480,6 +540,8 @@ Example for "I need NESU Tution Services from NESU Qureshi":
         self,
         raw_query: str,
         existing_shortlist: Optional[List[Dict[str, Any]]] = None,
+        user_lat: Optional[float] = None,
+        user_lon: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Execute the 7-stage hybrid retrieval pipeline.
@@ -625,10 +687,130 @@ Example for "I need NESU Tution Services from NESU Qureshi":
         for p in semantic_res:
             add_cand(p, "stage_6_semantic", p.get("_source_score", 0.65))
 
-        # ── Stage 7: Multi-factor Reranking & Final Ordering ──
-        print("[RETRIEVAL STAGE 7] Running Multi-factor Reranker & Ordering...")
-        candidates_list = list(candidates.values())
-        ranked = self._rerank_results(candidates_list, parsed)
+        # ── Stage 7: Radius Expansion & Distance Balancing ──
+        # We start with a strict radius (5km) and expand up to 30km if results are low.
+        radii = [5, 10, 20, 30]
+        final_candidates = []
+        best_radius = 30 # Default/Max
+        
+        if user_lat is not None and user_lon is not None:
+            print(f"[RETRIEVAL] User location detected: {user_lat}, {user_lon}. Applying radius expansion...")
+            
+            for radius in radii:
+                current_radius_cands = []
+                for cid, doc in candidates.items():
+                    # ── Phase A: Source-of-Truth Hierarchy Restoration (Correction 4) ──
+                    # Priority 1: service_providers (The already enriched search index/card)
+                    # Priority 2: provider_info (Fallback for missing business stats)
+                    # Priority 3: users (Fallback for missing contact info)
+                    
+                    p_sid = doc.get("provider_supabase_id") or doc.get("supabase_id") or doc.get("provider_id")
+                    
+                    if p_sid and not p_sid.startswith("PROV-"):
+                        # Fetch fallbacks only if mandatory fields are missing
+                        needs_fallback = any(doc.get(f) is None or doc.get(f) == "" for f in ["phone", "rating", "provider_name"])
+                        
+                        if needs_fallback:
+                            rich_profile = self.db.provider_info.find_one({"supabase_id": p_sid})
+                            user_profile = self.db.users.find_one({"supabase_id": p_sid})
+                            
+                            if rich_profile:
+                                # FALLBACK ONLY (do not overwrite)
+                                for f in ["phone", "email", "rating", "provider_name", "location_data"]:
+                                    if not doc.get(f):
+                                        source_f = "name" if f == "provider_name" else f
+                                        doc[f] = rich_profile.get(source_f)
+                            
+                            if user_profile:
+                                # FALLBACK ONLY
+                                if not doc.get("phone"): doc["phone"] = user_profile.get("phone")
+                                if not doc.get("location_data"): doc["location_data"] = user_profile.get("location_data")
+                                if not doc.get("avatar_url"): doc["avatar_url"] = user_profile.get("avatar_url")
+                    
+                    # Ensure supabase_id is present for the booking pipeline
+                    if not doc.get("supabase_id") and doc.get("provider_id"):
+                        doc["supabase_id"] = doc["provider_id"]
+                    # ──────────────────────────────────────────────────────────
+
+                    # Calculate distance
+                    doc_lat = doc.get("latitude")
+                    doc_lon = doc.get("longitude")
+                    
+                    # Robust path 1: location_data (New Standard)
+                    if doc_lat is None and doc.get("location_data"):
+                        doc_lat = doc["location_data"].get("latitude")
+                        doc_lon = doc["location_data"].get("longitude")
+
+                    # Robust path 2: coordinates nested (Legacy fallback)
+                    if doc_lat is None and doc.get("coordinates"):
+                        if isinstance(doc["coordinates"], list) and len(doc["coordinates"]) == 2:
+                            # Standard GeoJSON [lng, lat]
+                            doc_lon, doc_lat = doc["coordinates"]
+                        else:
+                            doc_lat = doc["coordinates"].get("latitude")
+                            doc_lon = doc["coordinates"].get("longitude")
+
+                    # ── Phase 6.5: Auto-Persist Coordinates ─────────────────
+                    # If still no coords, try geocoding from service_location
+                    if doc_lat is None and doc.get("service_location"):
+                        try:
+                            import googlemaps as _gmaps_mod
+                            import os as _os_mod
+                            _gm_key = _os_mod.getenv("GOOGLE_MAPS_API_KEY")
+                            if _gm_key:
+                                _gm_client = _gmaps_mod.Client(key=_gm_key)
+                                _geo_result = _gm_client.geocode(doc["service_location"])
+                                if _geo_result:
+                                    _geo_loc = _geo_result[0]["geometry"]["location"]
+                                    doc_lat = _geo_loc["lat"]
+                                    doc_lon = _geo_loc["lng"]
+                                    # Persist back to Mongo for future lookups
+                                    self.db.service_providers.update_one(
+                                        {"_id": doc["_id"]},
+                                        {"$set": {
+                                            "latitude": doc_lat,
+                                            "longitude": doc_lon,
+                                            "location_data": {
+                                                **(doc.get("location_data") or {}),
+                                                "latitude": doc_lat,
+                                                "longitude": doc_lon
+                                            }
+                                        }}
+                                    )
+                                    doc["latitude"] = doc_lat
+                                    doc["longitude"] = doc_lon
+                                    if not doc.get("location_data"):
+                                        doc["location_data"] = {}
+                                    doc["location_data"]["latitude"] = doc_lat
+                                    doc["location_data"]["longitude"] = doc_lon
+                                    print(f"[PHASE 6.5] Auto-persisted coordinates for '{doc.get('provider_name', doc.get('name', '?'))}': {doc_lat}, {doc_lon}")
+                        except Exception as geo_err:
+                            print(f"[PHASE 6.5] Geocode failed for '{doc.get('service_location')}': {geo_err}")
+                    # ─────────────────────────────────────────────────────────
+                    
+                    dist = self._calculate_distance(user_lat, user_lon, doc_lat, doc_lon)
+                    if dist is not None:
+                        doc["_distance_km"] = round(dist, 1)
+                        # Higher base score for closer providers
+                        if dist <= radius:
+                            current_radius_cands.append(doc)
+                    else:
+                        # If no location data, we keep it as a fallback with high distance penalty in ranking
+                        doc["_distance_km"] = 999 
+                        current_radius_cands.append(doc)
+                
+                if len(current_radius_cands) >= 3 or radius == 30:
+                    best_radius = radius
+                    final_candidates = current_radius_cands
+                    print(f"[RETRIEVAL] Radius Expansion: Found {len(final_candidates)} candidates at {radius}km.")
+                    break
+        else:
+            print("[RETRIEVAL] No user location provided. Skipping distance filter.")
+            final_candidates = list(candidates.values())
+
+        # ── Stage 8: Multi-factor Reranking & Final Ordering ──
+        print("[RETRIEVAL STAGE 8] Running Multi-factor Reranker & Ordering...")
+        ranked = self._rerank_results(final_candidates, parsed)
 
         # Confidence + output
         top = ranked[:5]
@@ -665,7 +847,7 @@ Example for "I need NESU Tution Services from NESU Qureshi":
             "debug": {
                 "raw_query": raw_query,
                 "parsed_intent": parsed,
-                "candidates_found": len(candidates_list),
+                "candidates_found": len(final_candidates),
                 "best_score": best_score,
                 "top_result_debug": top[0].get("_debug") if top else {},
             },

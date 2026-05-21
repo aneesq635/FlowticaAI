@@ -404,6 +404,17 @@ class CommunicationAgent(BaseAgent):
         iteration = state.get("iteration_count", 0)
         booking_ctx = state.get("booking_context", {}) or {}
         booking_details = state.get("booking_details", {}) or {}
+        retrieval_debug = state.get("retrieval_debug", {}) or {}
+
+        # ── RADIUS EXPANSION EXPLANATION ────────────────────────────
+        expansion_instructions = ""
+        radius = retrieval_debug.get("best_radius")
+        if radius and radius > 5:
+            expansion_instructions = (
+                f"\nCRITICAL STATE: Search radius was expanded to {radius}km because no exact nearby matches were found. "
+                "Explain to the user: 'No exact nearby provider found. I've expanded the search radius and included similar specialists to give you more options.' "
+                "Keep this explanation helpful and polite."
+            )
 
         # ── REQUEST CREATION VERIFICATION (provider_selection) ────────
         request_creation_success = state.get("request_creation_success")
@@ -500,7 +511,7 @@ CONVERSATION CONTEXT:
 - Conversation Stage: {stage}
 - Session Summary: {summary}
 - Iteration: {iteration}
-{request_creation_instructions}{booking_outcome_instructions}{retrieval_instructions}
+{request_creation_instructions}{booking_outcome_instructions}{retrieval_instructions}{expansion_instructions}
 
 AVAILABLE DATA:
 - Available Services: {services}
