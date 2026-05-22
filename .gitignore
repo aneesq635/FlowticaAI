@@ -4,7 +4,7 @@ backend/venv/
 backend/__pycache__/
 backend/agents/__pycache__/
 backend/core/__pycache__/
- backend/models/__pycache__/
+backend/models/__pycache__/
 .venv/
 env/
 venv/
