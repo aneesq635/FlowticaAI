@@ -26,22 +26,25 @@
 
 ##  Table of Contents
 
-- [About The Project](#-about-the-project)
-- [The Problem We Solve](#-the-problem-we-solve)
-- [Key Features](#-key-features)
-- [System Architecture](#-system-architecture)
-- [Tech Stack](#-tech-stack)
-- [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
+- [About The Project](#about-the-project)
+- [The Problem We Solve](#the-problem-we-solve)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Backend Setup](#backend-setup)
   - [Frontend Setup](#frontend-setup)
-- [Environment Variables](#-environment-variables)
-- [Multi-Agent Workflow](#-multi-agent-workflow)
-- [API Reference](#-api-reference)
-- [Demo](#-demo)
-- [Assumptions & Limitations](#-assumptions--limitations)
-
+- [Environment Variables](#environment-variables)
+- [Multi-Agent Workflow](#multi-agent-workflow)
+- [API Reference](#api-reference)
+- [Demo](#demo)
+- [Assumptions & Limitations](#assumptions--limitations)
+- [Roadmap](#-roadmap)
+  - [Currently In Progress](#currently-in-progress)
+  - [Next Up](#next-up)
+  - [Future Vision](#future-vision)
 ---
 
 ##  About The Project
@@ -525,7 +528,23 @@ The demo covers:
 - **Critical (pre-public release):** Rotate all API keys before making the repository public. Ensure `backend/.env` and `.env` are listed in `.gitignore`.
 
 ---
+## 🗺 Roadmap
 
+### Currently In Progress
+These features are built on the backend but still being polished on the frontend:
+
+- [ ] **Notifications & Follow-up System** — Backend logic is complete; frontend integration and display is actively being fixed
+- [ ] **Gemini Live Agent** — Without replacing the current text interface we will integrate a real-time voice-powered AI agent using Gemini Live API
+
+###  Next Up
+- [ ] **WhatsApp Integration** — Accepting service requests directly via WhatsApp using WhatsApp Cloud API
+- [ ] **Automated Reminders** — Follow-up reminders and booking confirmations delivered via WhatsApp or SMS
+
+### Future Vision
+- [ ] Real payment gateway (JazzCash / Stripe)
+- [ ] Provider verification & rating system
+- [ ] Multi-city expansion beyond Islamabad
+- [ ] Web dashboard for service providers
 <div align="center">
 
 Built with ❤️ for the **Google Antigravity Challenge 2**
