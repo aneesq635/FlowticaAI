@@ -13,8 +13,8 @@ import {
 } from '../store/liveAgentSlice';
 import { addMessage } from '../store/chatSlice';
 
-const DEFAULT_BASE_URL = 'http://192.168.0.102:5000';
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BASE_URL;
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL 
 // Token requests go to Flask (port 5000) via BACKEND_URL.
 // The WebSocket proxy runs on a DEDICATED port (5001) because Werkzeug
 // (Flask-SocketIO threading mode) does not support raw WebSocket upgrades.

@@ -12,10 +12,11 @@ import MiniMap from "../../../components/MiniMap";
 const StatusBadge = ({ status }) => {
   const getStatusStyles = () => {
     switch (status) {
-      case 'completed': return { bg: 'rgba(255,255,255,0.05)', text: '#10b981', label: 'COMPLETED' };
-      case 'cancelled': return { bg: 'rgba(239,68,68,0.1)', text: '#ef4444', label: 'CANCELLED' };
-      case 'confirmed': return { bg: 'rgba(255,255,255,0.1)', text: '#fff', label: 'CONFIRMED' };
-      default: return { bg: 'rgba(255,255,255,0.03)', text: '#94a3b8', label: status.toUpperCase() };
+      case 'completed': return { bg: '#ecfdf5', text: '#10b981', label: 'Completed' };
+      case 'cancelled': return { bg: '#fef2f2', text: '#ef4444', label: 'Cancelled' };
+      case 'confirmed': return { bg: '#ebf5ff', text: '#3b82f6', label: 'Confirmed' };
+      case 'pending': return { bg: '#fff7ed', text: '#f97316', label: 'Pending' };
+      default: return { bg: '#f8fafc', text: '#64748b', label: status.charAt(0).toUpperCase() + status.slice(1) };
     }
   };
 
@@ -184,89 +185,80 @@ export default function BookedServices() {
             const canComplete = upcoming && isPast(booking.requested_date || booking.date, booking.requested_time || booking.time);
 
             return (
-              <View key={booking._id} style={[s.card, { backgroundColor: isDark ? '#0f172a' : '#fff', borderColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
-                {/* Trash Button - Absolute positioned for cleaner header */}
-                <TouchableOpacity onPress={() => handleDeleteBooking(booking._id)} style={s.trashBtnAbsolute}>
-                  <Trash size={14} color="#ef4444" />
-                </TouchableOpacity>
-
-                {/* Card Header: Type + Status */}
+              <View key={booking._id} style={s.card}>
+                {/* Header: Title, Status, Trash */}
                 <View style={s.cardTop}>
-                  <StatusBadge status={booking.status} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.serviceType}>{booking.service_type}</Text>
+                    <Text style={s.priceText}>Price: {booking.price} PKR</Text>
+                  </View>
+                  <View style={s.statusRow}>
+                    <StatusBadge status={booking.status} />
+                    <TouchableOpacity onPress={() => handleDeleteBooking(booking._id)} style={s.trashBtn}>
+                      <Trash size={16} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
-                {/* Main Info Section */}
-                <View style={s.cardBody}>
-                  <View style={s.serviceHeader}>
-                    <Text style={[s.serviceType, { color: isDark ? '#fff' : '#0f172a' }]}>{booking.service_type.toUpperCase()}</Text>
-                    <View style={s.priceTag}>
-                      <Text style={s.priceText}>{booking.price}</Text>
-                      <Text style={s.currencyText}>PKR</Text>
-                    </View>
-                  </View>
+                <View style={s.divider} />
 
-                  <View style={s.divider} />
+                {/* Scheduled Time */}
+                <View style={s.infoRow}>
+                  <Clock size={18} color="#94a3b8" />
+                  <Text style={s.scheduledText}>
+                    Scheduled: {booking.requested_date || booking.date} at {booking.requested_time || booking.time}
+                  </Text>
+                </View>
 
-                  {/* Provider Details */}
-                  <View style={s.entityRow}>
-                    <View style={s.avatarContainer}>
+                {/* Provider Details Section */}
+                <View style={s.sectionContainer}>
+                  <Text style={s.sectionHeader}>PROVIDER DETAILS</Text>
+                  <View style={s.providerRow}>
+                    <View style={s.avatarWrapper}>
                       {snap.provider_avatar ? (
                         <Image source={{ uri: snap.provider_avatar }} style={s.avatar} />
                       ) : (
-                        <AvatarPlaceholder name={snap.provider_name || 'Expert'} isDark={isDark} />
+                        <AvatarPlaceholder name={snap.provider_name} size={40} isDark={isDark} />
                       )}
                     </View>
-                    <View style={s.entityDetails}>
-                      <Text style={[s.entityName, { color: isDark ? '#f8fafc' : '#0f172a' }]}>{snap.provider_name || 'Service Expert'}</Text>
-                      {snap.provider_phone && (
-                        <View style={s.infoRow}>
-                          <Phone size={10} color="#64748b" />
-                          <Text style={s.infoText}>{snap.provider_phone}</Text>
-                        </View>
-                      )}
+                    <View style={s.providerInfo}>
+                      <Text style={s.providerName}>{snap.provider_name || 'Service Expert'}</Text>
+                      <View style={s.contactItem}>
+                        <Globe size={12} color="#94a3b8" />
+                        <Text style={s.contactText}>{snap.provider_email || booking.provider_email || 'No email'}</Text>
+                      </View>
                     </View>
                   </View>
 
-                  {/* Operational Info Boxes */}
-                  <View style={s.operationalGrid}>
-                    <View style={[s.infoBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }]}>
-                      <View style={s.infoRow}>
-                        <Clock size={12} color="#64748b" />
-                        <Text style={s.infoLabel}>SCHEDULED:</Text>
-                      </View>
-                      <Text style={[s.infoValue, { color: isDark ? '#cbd5e1' : '#1e293b' }]}>
-                        {booking.requested_date || booking.date} @ {booking.requested_time || booking.time}
+                  {/* Contact Box */}
+                  <View style={s.contactBox}>
+                    <View style={s.contactRow}>
+                      <Phone size={16} color="#94a3b8" />
+                      <Text style={s.contactBoxText}>{snap.provider_phone || 'N/A'}</Text>
+                    </View>
+                    <View style={[s.contactRow, { alignItems: 'flex-start' }]}>
+                      <MapPin size={16} color="#94a3b8" />
+                      <Text style={s.contactBoxText}>
+                        {snap.provider_location_data?.address || booking.provider_location || 'Address not available'}
                       </Text>
                     </View>
                   </View>
 
-                  {/* Location & Map Section */}
-                  {snap.customer_location_data?.address && (
-                    <View style={s.locationSection}>
-                      <View style={s.locationHeader}>
-                        <MapPin size={12} color="#64748b" />
-                        <Text style={s.locationTitle}>SERVICE ADDRESS</Text>
-                      </View>
-                      <Text style={[s.addressText, { color: isDark ? '#94a3b8' : '#475569' }]} numberOfLines={2}>
-                        {snap.customer_location_data.address}
-                      </Text>
-
-                      {snap.customer_location_data.latitude && (
-                        <View style={s.mapWrapper}>
-                          <MiniMap
-                            latitude={snap.customer_location_data.latitude}
-                            longitude={snap.customer_location_data.longitude}
-                            address={snap.customer_location_data.address}
-                            height={110}
-                          />
-                          <TouchableOpacity onPress={() => openMap(snap.customer_location_data)} style={s.mapOverlay}>
-                            <View style={s.mapAction}>
-                              <ExternalLink size={14} color="#fff" />
-                              <Text style={s.mapActionText}>OPEN MAPS</Text>
-                            </View>
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                  {/* MiniMap Integration */}
+                  {(snap.provider_location_data?.latitude || snap.customer_location_data?.latitude) && (
+                    <View style={s.mapContainer}>
+                      <MiniMap
+                        latitude={snap.provider_location_data?.latitude || snap.customer_location_data?.latitude}
+                        longitude={snap.provider_location_data?.longitude || snap.customer_location_data?.longitude}
+                        address={snap.provider_location_data?.address || snap.customer_location_data?.address}
+                        height={120}
+                      />
+                      <TouchableOpacity
+                        onPress={() => openMap(snap.provider_location_data || snap.customer_location_data)}
+                        style={s.mapOverlay}
+                      >
+                        <ExternalLink size={14} color="#fff" />
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -275,16 +267,18 @@ export default function BookedServices() {
                 {upcoming && (
                   <View style={s.cardActions}>
                     <TouchableOpacity onPress={() => handleCancelBooking(booking)} style={[s.actionBtn, s.cancelBtn]}>
-                      <Text style={s.cancelBtnText}>CANCEL</Text>
+                      <Trash size={14} color="#ef4444" style={{ marginRight: 6 }} />
+                      <Text style={s.cancelBtnText}>Cancel Service</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       disabled={!canComplete}
                       onPress={() => setRatingModal({ open: true, bookingId: booking._id })}
-                      style={[s.actionBtn, canComplete ? s.completeBtn : s.disabledBtn]}
+                      style={[s.actionBtn, canComplete ? s.completeBtn : s.lockedBtn]}
                     >
-                      <Text style={canComplete ? s.completeBtnText : s.disabledBtnText}>
-                        {canComplete ? 'MARK COMPLETED' : 'AWAITING SERVICE'}
+                      <CheckCircle size={14} color={canComplete ? "#3b82f6" : "#64748b"} style={{ marginRight: 6 }} />
+                      <Text style={canComplete ? s.completeBtnText : s.lockedBtnText}>
+                        {canComplete ? 'Mark Done' : 'Locked'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -337,52 +331,46 @@ export default function BookedServices() {
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
-  scroll: { flex: 1, padding: 24 },
+  scroll: { flex: 1, padding: 20 },
   scrollContent: { paddingBottom: 100 },
-  header: { marginBottom: 32 },
-  title: { fontSize: 28, fontWeight: '900', letterSpacing: -1 },
-  subtitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginTop: 4 },
+  header: { marginBottom: 24 },
+  title: { fontSize: 32, fontWeight: '900', color: '#0f172a', letterSpacing: -0.5 },
+  subtitle: { fontSize: 12, fontWeight: '700', color: '#64748b', letterSpacing: 1, marginTop: 4, textTransform: 'uppercase' },
   emptyState: { alignItems: 'center', marginTop: 80, gap: 16 },
-  emptyText: { fontSize: 12, fontWeight: 'bold' },
-  card: { borderRadius: 28, padding: 24, marginBottom: 20, borderWidth: 1, overflow: 'hidden' },
-  trashBtnAbsolute: { position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(239,68,68,0.08)', zIndex: 10 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  cardBody: { gap: 20 },
-  serviceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: 40 },
-  serviceType: { fontSize: 18, fontWeight: '900', letterSpacing: 0.5, flex: 1, lineHeight: 24 },
-  priceTag: { alignItems: 'flex-end', marginLeft: 12 },
-  priceText: { fontSize: 18, fontWeight: '900', color: '#64748b' },
-  currencyText: { fontSize: 10, fontWeight: '900', color: '#94a3b8', marginTop: -2 },
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  entityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  avatarContainer: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
-  entityDetails: { gap: 4, flex: 1 },
-  entityName: { fontSize: 14, fontWeight: '800' },
-  operationalGrid: { gap: 12 },
-  infoBox: { padding: 16, borderRadius: 18 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  infoLabel: { fontSize: 9, color: '#64748b', fontWeight: '900', letterSpacing: 0.5 },
-  infoValue: { fontSize: 12, fontWeight: '700' },
-  infoText: { fontSize: 11, color: '#94a3b8' },
-  locationSection: { gap: 10 },
-  locationHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  locationTitle: { fontSize: 10, fontWeight: '900', color: '#64748b', letterSpacing: 1 },
-  addressText: { fontSize: 13, lineHeight: 20 },
-  mapWrapper: { borderRadius: 20, overflow: 'hidden', height: 110, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  mapOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center' },
-  mapAction: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
-  mapActionText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-  cardActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  actionBtn: { flex: 1, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cancelBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)' },
-  cancelBtnText: { color: '#ef4444', fontSize: 11, fontWeight: '900' },
-  completeBtn: { backgroundColor: '#fff' },
-  completeBtnText: { color: '#000', fontSize: 11, fontWeight: '900' },
-  disabledBtn: { backgroundColor: 'rgba(255,255,255,0.05)' },
-  disabledBtnText: { color: '#475569', fontSize: 11, fontWeight: '900' },
+  emptyText: { fontSize: 14, color: '#94a3b8', fontWeight: '600' },
+  card: { backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#f1f5f9', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  statusText: { fontSize: 12, fontWeight: '700' },
+  trashBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#fee2e2' },
+  serviceType: { fontSize: 22, fontWeight: '800', color: '#0f172a', marginBottom: 2 },
+  priceText: { fontSize: 14, color: '#64748b', fontWeight: '600' },
+  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 12 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  scheduledText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
+  sectionContainer: { marginTop: 8 },
+  sectionHeader: { fontSize: 10, fontWeight: '800', color: '#94a3b8', letterSpacing: 1.5, marginBottom: 12 },
+  providerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  avatarWrapper: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden', backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 44, height: 44 },
+  providerInfo: { flex: 1, gap: 2 },
+  providerName: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
+  contactItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  contactText: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
+  contactBox: { backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, gap: 12, marginBottom: 16 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  contactBoxText: { fontSize: 13, color: '#64748b', fontWeight: '500', flex: 1, lineHeight: 18 },
+  mapContainer: { height: 120, borderRadius: 16, overflow: 'hidden', backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  mapOverlay: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 8 },
+  cardActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  actionBtn: { flex: 1, height: 48, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  cancelBtn: { backgroundColor: '#fef2f2', borderColor: '#fee2e2' },
+  cancelBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '700' },
+  completeBtn: { backgroundColor: '#ebf5ff', borderColor: '#dbeafe' },
+  completeBtnText: { color: '#3b82f6', fontSize: 13, fontWeight: '700' },
+  lockedBtn: { backgroundColor: '#f8fafc', borderColor: '#f1f5f9' },
+  lockedBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
   modal: { padding: 32, borderRadius: 32, gap: 24 },
   modalTitle: { fontSize: 16, fontWeight: '900', textAlign: 'center', letterSpacing: 1 },
   starRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },

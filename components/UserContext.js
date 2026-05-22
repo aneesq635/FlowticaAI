@@ -7,7 +7,7 @@ export function UserProvider({ children }) {
   const { user } = useAuth();
   const [dbUser, setDbUser] = useState(null);
   const [loading, setLoading] = useState(false);
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.0.102:5000';
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL
 
   const fetchUser = async () => {
     if (!user?.id) {

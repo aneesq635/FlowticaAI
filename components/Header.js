@@ -18,7 +18,7 @@ export default function Header() {
   let router = null;
   try { router = useRouter(); } catch (e) { /* nav not ready */ }
 
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://192.168.0.102:5000';
+  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL 
 
   const navigate = useCallback((href) => {
     if (router) router.push(href);
