@@ -414,6 +414,16 @@ def finalize_negotiation_resolution(request_id, active_request, action="accepted
                 }
             )
             
+            # Mark any pending counter_offer notifications as handled so the
+            # Accept/Decline buttons disappear from the notifications list.
+            db.notifications.update_many(
+                {
+                    "related_id": str(request_id),
+                    "type": "counter_offer"
+                },
+                {"$set": {"type": "counter_offer_handled"}}
+            )
+
             # Standardized Payloads to BOTH rooms
             socketio.emit("request_status_updated", {
                 "request_id": str(request_id),
@@ -449,6 +459,16 @@ def finalize_negotiation_resolution(request_id, active_request, action="accepted
                     "$push": {"negotiation_history": history_entry}
                 }
             )
+
+            # Mark any pending counter_offer notifications as handled.
+            db.notifications.update_many(
+                {
+                    "related_id": str(request_id),
+                    "type": "counter_offer"
+                },
+                {"$set": {"type": "counter_offer_handled"}}
+            )
+
             socketio.emit('request_status_updated', {"request_id": str(request_id), "status": "rejected"}, room=provider_id)
             socketio.emit('request_status_updated', {"request_id": str(request_id), "status": "rejected"}, room=customer_id)
             return True
@@ -1856,11 +1876,22 @@ def respond_to_request(request_id=None):
             socketio.emit("request_status_updated", payload, room=provider_id)
             
             # PERSIESTENCE: Inject into chat history so it survives refresh
+            service_type = req_doc.get("service_type", "Service")
+            counter_note_text = counter_offer_data.get("message") or ""
+            counter_msg_parts = [
+                f"📋 **Counter-Offer** for **{service_type}** from **{provider_name or 'Provider'}**:",
+                f"💰 New Price: {counter_offer_data['price']} PKR",
+                f"📅 Date: {counter_offer_data['date']} at {counter_offer_data['time']}",
+            ]
+            if counter_note_text:
+                counter_msg_parts.append(f"📝 Reason: \"{counter_note_text}\"")
+            counter_msg_content = "\n".join(counter_msg_parts)
+
             if conversation_id:
                 conv_model.add_message(
                     conversation_id, 
                     "assistant", 
-                    f"I've sent a counter-offer: {counter_offer_data['price']} PKR on {counter_offer_data['date']}.",
+                    counter_msg_content,
                     agent="Provider",
                     metadata={
                         "type": "counter_offer",
@@ -1869,10 +1900,30 @@ def respond_to_request(request_id=None):
                         "counter_date": counter_offer_data["date"],
                         "counter_time": counter_offer_data["time"],
                         "counter_note": counter_offer_data["message"],
-                        "provider_name": provider_name
+                        "provider_name": provider_name,
+                        "service_type": service_type
                     }
                 )
             
+            # Send notification to customer about the counter-offer
+            try:
+                notif_msg = f"{provider_name or 'A provider'} sent a counter-offer for your {service_type} request: {counter_offer_data['price']} PKR on {counter_offer_data['date']} at {counter_offer_data['time']}."
+                if counter_note_text:
+                    notif_msg += f" Reason: \"{counter_note_text}\""
+                db.notifications.insert_one({
+                    "user_supabase_id": customer_supabase_id,
+                    "role": "buyer",
+                    "type": "counter_offer",
+                    "title": "New Counter-Offer Received",
+                    "message": notif_msg,
+                    "related_id": str(request_id),
+                    "status": "unread",
+                    "created_at": datetime.utcnow()
+                })
+                socketio.emit('booking_notification', {"user_supabase_id": customer_supabase_id})
+            except Exception as notif_err:
+                print(f"[NOTIF ERROR] Counter-offer notification failed: {notif_err}")
+
             print(f"[SOCKET] Counter-offer emitted and persisted for customer: {customer_supabase_id}")
             return jsonify({"success": True, "status": "countered"})
             
@@ -1933,6 +1984,20 @@ def respond_to_request(request_id=None):
                 {"$push": {f"booked_slots.{final_date}": final_time}},
                 upsert=True
             )
+
+            # If the provider approved or denied, mark any outstanding counter_offer
+        # notifications as handled so the Accept/Decline buttons disappear.
+        if status in ("confirmed", "denied", "rejected"):
+            try:
+                db.notifications.update_many(
+                    {
+                        "related_id": str(request_id),
+                        "type": "counter_offer"
+                    },
+                    {"$set": {"type": "counter_offer_handled"}}
+                )
+            except Exception as mark_err:
+                print(f"[NOTIF MARK ERROR] {mark_err}")
 
         # 3. Notification Logic
         try:

@@ -499,10 +499,16 @@ class CommunicationAgent(BaseAgent):
 
         retrieval_instructions = ""
         if state.get("retrieval_confidence") in ("LOW", "NONE"):
-            retrieval_instructions = (
-                f"\nCRITICAL STATE: Search confidence is {state.get('retrieval_confidence')}. "
-                "Ask the user to clarify their request. Do NOT say no providers were found."
-            )
+            if shortlist:
+                retrieval_instructions = (
+                    f"\nCRITICAL STATE: Search confidence is {state.get('retrieval_confidence')}, but some results were found. "
+                    "Display the results to the user while politely asking for any missing details (location, timing, etc.) to refine the selection."
+                )
+            else:
+                retrieval_instructions = (
+                    f"\nCRITICAL STATE: Search confidence is {state.get('retrieval_confidence')}. "
+                    "Ask the user to clarify their request. Do NOT say no providers were found."
+                )
 
         system_prompt = f"""You are the Frontier Agent of Flowtica AI — a professional, helpful service marketplace assistant.
 
@@ -530,11 +536,13 @@ ABSOLUTE RULES — NEVER VIOLATE:
 4. Always respond in the same language as the user's latest message.
 5. If shortlisted_providers exist, format each as:
    Provider: [Name] | Service: [Service] | Price: [Rate] [Currency]
-6. For status 'pending': tell user request is awaiting provider review.
+6. PRIORITY: If shortlisted_providers exist, prioritize surfacing them immediately using the exact card format required. Avoid asking unnecessary qualifying questions before showing available options.
+7. For status 'pending': tell user request is awaiting provider review.
    For 'counter_offer': show counter details and ask if user accepts.
    For 'approved': confirm provider approved, ask to finalise booking.
    For 'denied': apologise, suggest alternatives.
-   For 'booked'/'confirmed': confirm booking is finalised."""
+   For 'booked'/'confirmed': confirm booking is finalised.
+8. Stop the agent from asking unnecessary questions if relevant providers are already found. Show them first."""
 
         messages_in_state = state.get("messages", [])
         llm_messages = [SystemMessage(content=system_prompt)] + list(messages_in_state)

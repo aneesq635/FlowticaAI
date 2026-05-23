@@ -191,29 +191,38 @@ export default function ProfileScreen() {
             {/* Location */}
             <View style={{ marginBottom: 20 }}>
               <Typography variant="small" className="font-bold mb-2">Location</Typography>
-              <View style={{ position: 'relative' }}>
-                <TextInput
-                  value={profile.location}
-                  onChangeText={(val) => setProfile({ ...profile, location: val })}
-                  placeholder="City, Country"
-                  placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                  style={{
-                    paddingLeft: 48, paddingRight: 16, paddingVertical: 16,
-                    borderRadius: 16, borderWidth: 1,
-                    borderColor: isDark ? '#1e293b' : '#e2e8f0',
-                    backgroundColor: isDark ? '#020617' : '#f8fafc',
-                    color: isDark ? '#ffffff' : '#0f172a',
-                    fontSize: 16
-                  }}
-                />
-                <View style={{ position: 'absolute', left: 16, top: 18 }}>
-                  <MapPin size={18} color="#64748b" />
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1, position: 'relative' }}>
+                  <TextInput
+                    value={profile.location}
+                    onChangeText={(val) => setProfile({ ...profile, location: val })}
+                    placeholder="City, Country"
+                    placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                    style={{
+                      paddingLeft: 48, paddingRight: 16, paddingVertical: 16,
+                      borderRadius: 16, borderWidth: 1,
+                      borderColor: isDark ? '#1e293b' : '#e2e8f0',
+                      backgroundColor: isDark ? '#020617' : '#f8fafc',
+                      color: isDark ? '#ffffff' : '#0f172a',
+                      fontSize: 16
+                    }}
+                  />
+                  <View style={{ position: 'absolute', left: 16, top: 18 }}>
+                    <MapPin size={18} color="#64748b" />
+                  </View>
                 </View>
                 <TouchableOpacity
                   onPress={() => setShowMap(true)}
-                  style={{ position: 'absolute', right: 16, top: 18 }}
+                  style={{ 
+                    marginLeft: 12, 
+                    padding: 14, 
+                    borderRadius: 16,
+                    backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
+                    borderWidth: 1,
+                    borderColor: isDark ? '#334155' : '#e2e8f0'
+                  }}
                 >
-                  <MapIcon size={18} color="#2563eb" />
+                  <MapIcon size={20} color="#2563eb" />
                 </TouchableOpacity>
               </View>
 

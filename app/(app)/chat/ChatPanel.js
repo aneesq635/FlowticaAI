@@ -383,7 +383,6 @@ const ChatPanel = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}  // ← ADD THIS
       >
         <AnimatePresence>
           {messages.length === 0 ? (

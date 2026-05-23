@@ -1,3 +1,290 @@
+// import React, { useState, useEffect, useCallback } from 'react';
+// import { 
+//   View, 
+//   Text, 
+//   ScrollView, 
+//   TouchableOpacity, 
+//   ActivityIndicator, 
+//   Alert 
+// } from 'react-native';
+// import { useRouter } from 'expo-router';
+// import { useSelector, useDispatch } from 'react-redux';
+// import { setUnreadCount } from '../../../store/orchestrationSlice';
+// import { useAuth } from '../../../components/AuthContext';
+// import { 
+//   Bell, 
+//   ArrowLeft, 
+//   Check, 
+//   X, 
+//   Clock, 
+//   MapPin, 
+//   DollarSign, 
+//   CheckCircle,
+//   AlertCircle
+// } from 'lucide-react-native';
+// import { Card } from '../../../components/ui/Card';
+// import { Button } from '../../../components/ui/Button';
+// import socketService from '../../../services/socket';
+
+// export default function NotificationsPage() {
+//   const router = useRouter();
+//   const { user } = useAuth();
+//   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
+  
+//   const [notifications, setNotifications] = useState([]);
+//   const [isLoading, setIsLoading] = useState(true);
+//   const dispatch = useDispatch();
+
+//   const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.25.2.90:5000';
+
+//   const fetchNotifications = useCallback(async () => {
+//     if (!user?.id) return;
+//     try {
+//       const res = await fetch(`${backendUrl}/api/notifications/${user.id}`);
+//       const data = await res.json();
+//       if (data.success) {
+//         setNotifications(data.notifications || []);
+//         const unread = (data.notifications || []).filter(n => n.status === 'unread').length;
+//         dispatch(setUnreadCount(unread));
+//         // Auto mark as read on load
+//         if (data.notifications?.some(n => n.status === 'unread')) {
+//           markAllAsRead();
+//         }
+//       }
+//     } catch (e) {
+//       console.warn("Failed to fetch notifications list", e);
+//     } finally {
+//       setIsLoading(false);
+//     }
+//   }, [user, backendUrl, dispatch]);
+
+//   const markAllAsRead = async () => {
+//     if (!user?.id) return;
+//     try {
+//       const res = await fetch(`${backendUrl}/api/notifications/mark-read`, {
+//         method: 'POST',
+//         headers: { 'Content-Type': 'application/json' },
+//         body: JSON.stringify({ user_supabase_id: user.id })
+//       });
+//       const data = await res.json();
+//       if (data.success) {
+//         dispatch(setUnreadCount(0));
+//       }
+//     } catch (e) {
+//       console.warn(e);
+//     }
+//   };
+
+//   const clearAll = async () => {
+//     if (!user?.id) return;
+//     try {
+//       const res = await fetch(`${backendUrl}/api/notifications/clear/${user.id}`, {
+//         method: 'DELETE'
+//       });
+//       const data = await res.json();
+//       if (data.success) {
+//         setNotifications([]);
+//         dispatch(setUnreadCount(0));
+//       }
+//     } catch (e) {
+//       console.warn(e);
+//     }
+//   };
+
+//   const deleteNotification = async (id) => {
+//     try {
+//       const res = await fetch(`${backendUrl}/api/notifications/${id}`, {
+//         method: 'DELETE',
+//       });
+//       const data = await res.json();
+//       if (data.success) {
+//         setNotifications(prev => {
+//           const updated = prev.filter(n => n._id !== id);
+//           const unread = updated.filter(n => n.status === 'unread').length;
+//           dispatch(setUnreadCount(unread));
+//           return updated;
+//         });
+//       }
+//     } catch (e) {
+//       console.warn(e);
+//     }
+//   };
+
+//   const handleCounterDecision = async (requestId, decision) => {
+//     try {
+//       setIsLoading(true);
+//       const res = await fetch(`${backendUrl}/api/providers/requests/${requestId}/respond`, {
+//         method: 'POST',
+//         headers: { 'Content-Type': 'application/json' },
+//         body: JSON.stringify({ status: decision })
+//       });
+//       const data = await res.json();
+//       if (data.success) {
+//         Alert.alert(
+//           "Success", 
+//           `You have ${decision === 'approved' ? 'accepted' : 'declined'} the counter-offer.`
+//         );
+//         fetchNotifications();
+//       } else {
+//         Alert.alert("Error", data.error || "Failed to submit decision.");
+//         setIsLoading(false);
+//       }
+//     } catch (e) {
+//       Alert.alert("Error", "Could not reach server.");
+//       setIsLoading(false);
+//     }
+//   };
+
+//   useEffect(() => {
+//     if (user?.id) {
+//       fetchNotifications();
+
+//       const socket = socketService?.socket;
+//       if (socket) {
+//         const handleNotif = (payload) => {
+//           if (payload.user_supabase_id === user.id) {
+//             fetchNotifications();
+//           }
+//         };
+//         socket.on('booking_notification', handleNotif);
+//         return () => {
+//           socket.off('booking_notification', handleNotif);
+//         };
+//       }
+//     } else {
+//       setIsLoading(false);
+//     }
+//   }, [user, fetchNotifications]);
+
+//   if (isLoading) {
+//     return (
+//       <View className={`flex-1 justify-center items-center ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+//         <ActivityIndicator size="large" color={isDark ? '#ffffff' : '#0f172a'} />
+//       </View>
+//     );
+//   }
+
+//   // Group by date
+//   const groupedNotifications = notifications.reduce((acc, notif) => {
+//     const date = new Date(notif.created_at).toLocaleDateString();
+//     if (!acc[date]) acc[date] = [];
+//     acc[date].push(notif);
+//     return acc;
+//   }, {});
+
+//   return (
+//     <ScrollView 
+//       className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'} px-6 pt-6`}
+//       showsVerticalScrollIndicator={false}
+//     >
+//       <View className="flex-row justify-between items-center mb-8">
+//         <View className="flex-row items-center">
+//           <TouchableOpacity 
+//             onPress={() => router.back()}
+//             className={`p-3 rounded-2xl mr-4 ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-100'}`}
+//           >
+//             <ArrowLeft size={18} color={isDark ? '#e2e8f0' : '#1e293b'} />
+//           </TouchableOpacity>
+//           <View>
+//             <Text className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Notifications</Text>
+//             <Text className="text-slate-500 font-bold text-xs uppercase tracking-tight">System Updates</Text>
+//           </View>
+//         </View>
+
+//         {notifications.length > 0 && (
+//           <TouchableOpacity 
+//             onPress={clearAll}
+//             className={`px-4 py-2.5 rounded-2xl ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-150'}`}
+//           >
+//             <Text className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+//               Clear All
+//             </Text>
+//           </TouchableOpacity>
+//         )}
+//       </View>
+
+//       {notifications.length === 0 ? (
+//         <View className="items-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 border-dashed">
+//           <View className={`w-16 h-16 rounded-full items-center justify-center mb-4 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+//             <Bell size={28} color={isDark ? '#64748b' : '#94a3b8'} />
+//           </View>
+//           <Text className={`font-black text-base ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>No notifications yet</Text>
+//           <Text className="text-slate-400 font-bold text-xs mt-1 text-center px-6">
+//             We will alert you when service providers respond to your requests.
+//           </Text>
+//         </View>
+//       ) : (
+//         <View className="mb-12">
+//           {Object.entries(groupedNotifications).map(([date, notifs]) => (
+//             <View key={date} className="mb-6">
+//               <Text className={`text-sm font-bold mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{date}</Text>
+//               {notifs.map((notif) => {
+//                 const isUnread = notif.status === 'unread';
+//                 const isCounter = notif.type === 'counter_offer';
+                
+//                 return (
+//                   <Card 
+//                     key={notif._id} 
+//                     className={`mb-4 p-5 rounded-3xl border-0 shadow-sm relative overflow-hidden ${
+//                       isUnread 
+//                         ? (isDark ? 'bg-slate-900 border-l-4 border-slate-400' : 'bg-white border-l-4 border-slate-800') 
+//                         : (isDark ? 'bg-slate-900/60' : 'bg-white/80')
+//                     }`}
+//                   >
+//                     <View className="flex-row justify-between items-start mb-2">
+//                       <View className="flex-1 mr-2">
+//                         <Text className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+//                           {notif.title}
+//                         </Text>
+//                         <Text className={`text-sm mt-1 leading-relaxed ${isDark ? 'text-slate-350' : 'text-slate-600'}`}>
+//                           {notif.message}
+//                         </Text>
+//                       </View>
+//                       <View className="mt-1 flex-row">
+//                         {notif.type === 'approved' || notif.type === 'booking_confirmed' ? (
+//                           <CheckCircle size={20} color="#22c55e" className="mr-2" />
+//                         ) : notif.type === 'denied' ? (
+//                           <AlertCircle size={20} color="#ef4444" className="mr-2" />
+//                         ) : (
+//                           <Clock size={20} color="#f97316" className="mr-2" />
+//                         )}
+//                         <TouchableOpacity onPress={() => deleteNotification(notif._id)}>
+//                           <X size={20} color="#ef4444" />
+//                         </TouchableOpacity>
+//                       </View>
+//                     </View>
+
+//                     {isCounter && (
+//                       <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? '#1e293b' : '#f1f5f9' }}>
+//                         <TouchableOpacity 
+//                           onPress={() => handleCounterDecision(notif.related_id, 'approved')}
+//                           className="flex-1 bg-green-500 py-3 rounded-2xl items-center justify-center shadow-sm"
+//                         >
+//                           <Text className="text-white font-black text-xs">Accept Offer</Text>
+//                         </TouchableOpacity>
+                        
+//                         <TouchableOpacity 
+//                           onPress={() => handleCounterDecision(notif.related_id, 'denied')}
+//                           className="flex-1 bg-slate-200 dark:bg-slate-800 py-3 rounded-2xl items-center justify-center"
+//                         >
+//                           <Text className={`font-black text-xs ${isDark ? 'text-slate-350' : 'text-slate-700'}`}>
+//                             Decline
+//                           </Text>
+//                         </TouchableOpacity>
+//                       </View>
+//                     )}
+//                   </Card>
+//                 );
+//               })}
+//             </View>
+//           ))}
+//         </View>
+//       )}
+//     </ScrollView>
+//   );
+// }
+
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
@@ -220,7 +507,16 @@ export default function NotificationsPage() {
               <Text className={`text-sm font-bold mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{date}</Text>
               {notifs.map((notif) => {
                 const isUnread = notif.status === 'unread';
+
+                // Buttons are shown ONLY for active counter offers.
+                // Once the backend flips the type to 'counter_offer_handled'
+                // (after the user accepts or declines), this becomes false and
+                // the Accept/Decline buttons disappear automatically.
                 const isCounter = notif.type === 'counter_offer';
+
+                // A handled counter offer shows a neutral "resolved" icon
+                // instead of the interactive buttons.
+                const isCounterHandled = notif.type === 'counter_offer_handled';
                 
                 return (
                   <Card 
@@ -245,6 +541,10 @@ export default function NotificationsPage() {
                           <CheckCircle size={20} color="#22c55e" className="mr-2" />
                         ) : notif.type === 'denied' ? (
                           <AlertCircle size={20} color="#ef4444" className="mr-2" />
+                        ) : isCounterHandled ? (
+                          // Resolved counter offer — show a neutral check so the
+                          // user knows they already acted on this notification
+                          <CheckCircle size={20} color="#94a3b8" className="mr-2" />
                         ) : (
                           <Clock size={20} color="#f97316" className="mr-2" />
                         )}
@@ -254,6 +554,7 @@ export default function NotificationsPage() {
                       </View>
                     </View>
 
+                    {/* Accept / Decline buttons — only for ACTIVE (unhandled) counter offers */}
                     {isCounter && (
                       <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? '#1e293b' : '#f1f5f9' }}>
                         <TouchableOpacity 
@@ -271,6 +572,15 @@ export default function NotificationsPage() {
                             Decline
                           </Text>
                         </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Resolved state label — shown for handled counter offers */}
+                    {isCounterHandled && (
+                      <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: isDark ? '#1e293b' : '#f1f5f9' }}>
+                        <Text className={`text-xs font-bold text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                          ✓ You have already responded to this offer
+                        </Text>
                       </View>
                     )}
                   </Card>

@@ -818,9 +818,9 @@ Example for "Mujhe AC wala chahiye parso sham ko":
 
         if not top:
             confidence = "NONE"
-        elif best_score >= 50:
+        elif best_score >= 40:
             confidence = "HIGH"
-        elif best_score >= 25:
+        elif best_score >= 20:
             confidence = "MEDIUM"
         else:
             confidence = "LOW"
