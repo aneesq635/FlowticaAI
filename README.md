@@ -15,7 +15,7 @@
 [![React Native](https://img.shields.io/badge/React%20Native-Expo-61DAFB?style=flat-square&logo=react&logoColor=black)](https://expo.dev)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Multi--Agent-FF6B6B?style=flat-square)](https://langchain-ai.github.io/langgraph/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongodb.com)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?style=flat-square&logo=openai&logoColor=white)](https://openai.com)
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4?style=flat-square&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
 
 <br/>
@@ -57,7 +57,7 @@ A user can simply type:
 
 ...and Flowtica's AI pipeline will extract intent, find the best nearby provider, simulate a booking, and schedule a follow-up reminder — all without manual intervention.
 
-Built as a submission for **Google Antigravity Challenge 2**, this project demonstrates end-to-end agentic automation using LangGraph as the core orchestration engine.
+Built as a submission for **Google Antigravity Challenge 2**, this project demonstrates end-to-end agentic automation using LangGraph as the core orchestration engine, powered by **Google Gemini** for LLM reasoning and embeddings.
 
 ---
 
@@ -183,8 +183,8 @@ The LangGraph engine is a **state machine** where:
 | [Flask](https://flask.palletsprojects.com) | REST API server |
 | Flask-SocketIO | Real-time bidirectional events |
 | [LangGraph](https://langchain-ai.github.io/langgraph/) | Stateful multi-agent orchestration |
-| OpenAI GPT-4o | Intent extraction & agent reasoning |
-| [ChromaDB](https://www.trychroma.com/) | Vector search for semantic provider matching |
+| Google Gemini 2.0 Flash | LLM reasoning, intent extraction & agent logic |
+| Google Generative AI Embeddings | Vector embeddings for ChromaDB semantic search |
 | MongoDB | Primary database (users, providers, bookings) |
 | Supabase | User authentication & JWT management |
 
@@ -332,22 +332,17 @@ Or scan the QR code from `expo start` using the **Expo Go** app.
 ### Backend (`backend/.env`)
 
 ```env
-# OpenAI
-OPENAI_API_KEY=sk-...
+# Google Gemini
+GEMINI_API_KEY=your-gemini-api-key
 
 # MongoDB
 MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/flowtica
-
-# Supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key
 
 # Google Maps
 GOOGLE_MAPS_API_KEY=your-google-maps-key
 
 # App Config
 FLASK_ENV=development
-SESSION_EXPIRY_SECONDS=300
 ```
 
 ### Frontend (`.env`)
@@ -356,7 +351,6 @@ SESSION_EXPIRY_SECONDS=300
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 EXPO_PUBLIC_BACKEND_URL=http://localhost:5000
-EXPO_PUBLIC_GOOGLE_MAPS_KEY=your-google-maps-key
 ```
 
 > **Security Warning:** Never commit `.env` files to version control. Add them to `.gitignore` and rotate any keys that were previously exposed.
