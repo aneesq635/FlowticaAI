@@ -22,7 +22,7 @@ from typing import Dict, Any, List
 import json
 from datetime import datetime
 from pymongo import MongoClient
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_vertexai import VertexAIEmbeddings
 from core.vector_store import vector_manager
 from core.knowledge_engine import HybridRetrievalEngine
 import os

@@ -5,9 +5,10 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../../components/AuthContext";
 import { Typography } from "../../../components/ui/Typography";
 import { useSelector } from "react-redux";
-import { Clock, MapPin, Star, CheckCircle, Trash, User, Phone, Globe, ExternalLink } from "lucide-react-native";
+import { Clock, MapPin, Star, CheckCircle, Trash, User, Phone, Globe, ExternalLink, Mail, Copy } from "lucide-react-native";
 import Modal from "react-native-modal";
 import MiniMap from "../../../components/MiniMap";
+import * as Clipboard from 'expo-clipboard';
 
 const StatusBadge = ({ status }) => {
   const getStatusStyles = () => {
@@ -28,11 +29,10 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const AvatarPlaceholder = ({ name, size = 48, isDark }) => {
-  const initials = name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'AI';
+const AvatarPlaceholder = ({ size = 48 }) => {
   return (
-    <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: isDark ? '#1e293b' : '#e2e8f0' }]}>
-      <Text style={[s.avatarText, { fontSize: size * 0.4, color: isDark ? '#94a3b8' : '#475569' }]}>{initials}</Text>
+    <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center' }]}>
+      <User size={size * 0.6} color="#3b82f6" />
     </View>
   );
 };
@@ -223,23 +223,45 @@ export default function BookedServices() {
                     </View>
                     <View style={s.providerInfo}>
                       <Text style={s.providerName}>{snap.provider_name || 'Service Expert'}</Text>
-                      <View style={s.contactItem}>
-                        <Globe size={12} color="#94a3b8" />
+                      <TouchableOpacity
+                        style={s.emailRow}
+                        onPress={async () => {
+                          const email = snap.provider_email || booking.provider_email;
+                          if (email) {
+                            await Clipboard.setStringAsync(email);
+                            Alert.alert('Copied', 'Email copied to clipboard');
+                          }
+                        }}
+                      >
+                        <Mail size={12} color="#94a3b8" />
                         <Text style={s.contactText}>{snap.provider_email || booking.provider_email || 'No email'}</Text>
-                      </View>
+                        <Copy size={10} color="#cbd5e1" style={{ marginLeft: 4 }} />
+                      </TouchableOpacity>
                     </View>
                   </View>
 
-                  {/* Contact Box */}
-                  <View style={s.contactBox}>
-                    <View style={s.contactRow}>
+                  {/* Refined Contact Info Box */}
+                  <View style={s.contactInfoBox}>
+                    {/* Row 1: Phone (Copyable) */}
+                    <TouchableOpacity
+                      style={s.contactRow}
+                      onPress={async () => {
+                        await Clipboard.setStringAsync(snap.provider_phone || 'N/A');
+                        Alert.alert('Copied', 'Phone number copied to clipboard');
+                      }}
+                    >
                       <Phone size={16} color="#94a3b8" />
-                      <Text style={s.contactBoxText}>{snap.provider_phone || 'N/A'}</Text>
-                    </View>
-                    <View style={[s.contactRow, { alignItems: 'flex-start' }]}>
+                      <Text style={s.contactValueText}>{snap.provider_phone || 'N/A'}</Text>
+                      <View style={s.copyIconSmall}>
+                        <Copy size={12} color="#cbd5e1" />
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Row 2: Address (Not copyable) */}
+                    <View style={[s.contactRow, { borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10, marginTop: 10 }]}>
                       <MapPin size={16} color="#94a3b8" />
-                      <Text style={s.contactBoxText}>
-                        {snap.provider_location_data?.address || booking.provider_location || 'Address not available'}
+                      <Text style={s.contactValueText}>
+                        {snap.provider_location_data?.address || booking.provider_location || 'Address N/A'}
                       </Text>
                     </View>
                   </View>
@@ -356,11 +378,12 @@ const s = StyleSheet.create({
   avatar: { width: 44, height: 44 },
   providerInfo: { flex: 1, gap: 2 },
   providerName: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-  contactItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  contactText: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
-  contactBox: { backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, gap: 12, marginBottom: 16 },
+  emailRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  contactText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  contactInfoBox: { backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#f1f5f9' },
   contactRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  contactBoxText: { fontSize: 13, color: '#64748b', fontWeight: '500', flex: 1, lineHeight: 18 },
+  contactValueText: { fontSize: 13, color: '#64748b', fontWeight: '500', flex: 1, lineHeight: 18 },
+  copyIconSmall: { padding: 4 },
   mapContainer: { height: 120, borderRadius: 16, overflow: 'hidden', backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
   mapOverlay: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 8 },
   cardActions: { flexDirection: 'row', gap: 12, marginTop: 20 },

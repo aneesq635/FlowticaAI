@@ -1,7 +1,7 @@
 import { Alert } from 'react-native';
 
 const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL
-const TIMEOUT_MS = 10000;    // 10 seconds — default
+const TIMEOUT_MS = 30000;    // 10 seconds — default
 const AI_TIMEOUT_MS = 90000;  // 90 seconds — for AI/orchestration endpoints
 
 class ApiClient {

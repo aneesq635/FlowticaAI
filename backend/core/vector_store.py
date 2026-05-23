@@ -11,7 +11,7 @@ KEY CHANGES:
 import os
 from pymongo import MongoClient
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_vertexai import VertexAIEmbeddings
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,8 +19,10 @@ load_dotenv()
 
 class VectorStoreManager:
     def __init__(self):
-        self.embeddings = OpenAIEmbeddings(
-            openai_api_key=os.getenv("OPENAI_API_KEY")
+        self.embeddings = VertexAIEmbeddings(
+            model_name="text-embedding-005",
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("VERTEX_AI_LOCATION", "us-central1")
         )
         self._vector_store = None
 

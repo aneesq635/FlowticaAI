@@ -42,6 +42,20 @@ from models.user import UserModel
 from models.provider import ProviderModel
 import googlemaps
 
+# Vertex AI Credential Setup
+credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+if credentials_path:
+    try:
+        # Convert to absolute path to ensure Vertex AI finds it
+        abs_credentials_path = os.path.abspath(credentials_path)
+        if os.path.exists(abs_credentials_path):
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = abs_credentials_path
+            print(f"[STARTUP DIAGNOSTIC] Vertex AI Credentials path resolved: {abs_credentials_path}")
+        else:
+            print(f"[STARTUP DIAGNOSTIC] WARNING: Credentials file not found at {abs_credentials_path}")
+    except Exception as e:
+        print(f"[STARTUP DIAGNOSTIC] ERROR: Failed to resolve credentials path: {e}")
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -200,10 +214,11 @@ def check_upcoming_bookings():
         time_str = one_hour_later.strftime("%H:%M") # Match up to the minute
         
         # We find bookings matching the EXACT date/time (ignoring seconds) that haven't been reminded
+        # Find bookings with "confirmed" status (user rule: status is confirmed upon acceptance)
         upcoming_bookings = list(db.bookings.find({
             "requested_date": date_str,
             "requested_time": time_str,
-            "status": "booked",
+            "status": "confirmed",
             "reminder_sent": {"$ne": True}
         }))
         
@@ -353,10 +368,12 @@ def finalize_negotiation_resolution(request_id, active_request, action="accepted
                 "snapshot": {
                     "provider_name": service_snap.get("provider_name") if service_snap else active_request.get("provider_name"),
                     "provider_phone": service_snap.get("provider_phone") if service_snap else active_request.get("provider_phone"),
+                    "provider_email": service_snap.get("provider_email") if service_snap else active_request.get("provider_email"),
                     "provider_avatar": service_snap.get("provider_avatar") if service_snap else active_request.get("provider_avatar"),
                     "provider_location_data": service_snap.get("provider_location_data") if service_snap else active_request.get("provider_location_data"),
                     "customer_name": cust_snap.get("name") if cust_snap else active_request.get("customer_name"),
                     "customer_phone": cust_snap.get("phone") if cust_snap else active_request.get("customer_phone"),
+                    "customer_email": cust_snap.get("email") if cust_snap else active_request.get("customer_email"),
                     "customer_avatar": cust_snap.get("avatar_url") if cust_snap else active_request.get("customer_avatar"),
                     "customer_location_data": cust_snap.get("location_data") if cust_snap else active_request.get("customer_location_data")
                 }
@@ -370,16 +387,18 @@ def finalize_negotiation_resolution(request_id, active_request, action="accepted
                 upsert=True
             )
             
-            # Notification logic (for Provider Dashboard)
-            db.follow_up.insert_one({
+            # Notification logic (Use consolidated notifications collection)
+            db.notifications.insert_one({
                 "user_supabase_id": provider_id,
                 "role": "seller",
                 "type": "booking_confirmed",
                 "title": "Booking Confirmed!",
                 "message": f"Customer accepted your counter offer for {active_request.get('service_type')}.",
                 "related_id": str(request_id),
+                "status": "unread",
                 "created_at": datetime.utcnow()
             })
+            socketio.emit('booking_notification', {"user_supabase_id": provider_id})
             
             # Update active_request status
             history_entry = {
@@ -1025,7 +1044,7 @@ def _gemini_ws_handler(client_ws):
 
         setup_payload = {
             "setup": {
-                "model": "models/gemini-2.0-flash-live-001",
+                "model": "models/gemini-2.5-flash-lite",
                 "generationConfig": {
                     "responseModalities": ["AUDIO"],
                     "speechConfig": {
@@ -1896,10 +1915,12 @@ def respond_to_request(request_id=None):
                 "snapshot": {
                     "provider_name": service_snap.get("provider_name") if service_snap else req_doc.get("provider_name"),
                     "provider_phone": service_snap.get("provider_phone") if service_snap else req_doc.get("provider_phone"),
+                    "provider_email": service_snap.get("provider_email") if service_snap else req_doc.get("provider_email"),
                     "provider_avatar": service_snap.get("provider_avatar") if service_snap else req_doc.get("provider_avatar"),
                     "provider_location_data": service_snap.get("provider_location_data") if service_snap else req_doc.get("provider_location_data"),
                     "customer_name": cust_snap.get("name") if cust_snap else req_doc.get("customer_name"),
                     "customer_phone": cust_snap.get("phone") if cust_snap else req_doc.get("customer_phone"),
+                    "customer_email": cust_snap.get("email") if cust_snap else req_doc.get("customer_email"),
                     "customer_avatar": cust_snap.get("avatar_url") if cust_snap else req_doc.get("customer_avatar"),
                     "customer_location_data": cust_snap.get("location_data") if cust_snap else req_doc.get("customer_location_data")
                 }
@@ -1915,17 +1936,19 @@ def respond_to_request(request_id=None):
 
         # 3. Notification Logic
         try:
-            db.follow_up.insert_one({
+            db.notifications.insert_one({
                 "user_supabase_id": customer_id,
                 "role": "buyer",
                 "type": status,
                 "title": f"Request {status.capitalize()}",
                 "message": f"Your request for {req_doc.get('service_type')} has been {status}.",
                 "related_id": str(request_id),
+                "status": "unread",
                 "created_at": datetime.utcnow()
             })
             # Emit Socket (Correction 8: Refresh pending list)
             socketio.emit('request_status_updated', {"request_id": str(request_id), "status": status, "user_id": customer_id})
+            socketio.emit('booking_notification', {"user_supabase_id": customer_id})
         except Exception as e:
             print(f"[NOTIF ERROR] {e}")
         

@@ -60,3 +60,7 @@ coverage/
 # Misc
 *.orig.*
 *.tsbuildinfo
+
+# Credentials
+credentials/
+*.json

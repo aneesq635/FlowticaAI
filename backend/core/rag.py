@@ -1,6 +1,6 @@
 import os
 from pymongo import MongoClient
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_vertexai import VertexAIEmbeddings
 from langchain_mongodb import MongoDBAtlasVectorSearch
 from dotenv import load_dotenv
 
@@ -15,7 +15,11 @@ class RAGManager:
         self.db = self.client[self.db_name]
         self.collection = self.db[self.collection_name]
         
-        self.embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
+        self.embeddings = VertexAIEmbeddings(
+            model_name="text-embedding-005",
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("VERTEX_AI_LOCATION", "us-central1")
+        )
         
         self.vector_search = MongoDBAtlasVectorSearch(
             collection=self.collection,

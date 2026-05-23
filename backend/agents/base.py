@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 from core.state import AgentState
 from core.logger import logger
-from langchain_openai import ChatOpenAI
+from langchain_google_vertexai import ChatVertexAI
 import os
 import datetime
 
@@ -10,10 +10,13 @@ class BaseAgent(ABC):
     def __init__(self, name: str, role: str):
         self.name = name
         self.role = role
-        self.llm = ChatOpenAI(
-            model="gpt-4o", 
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            temperature=0
+        # Initialize Vertex AI LLM
+        self.llm = ChatVertexAI(
+            model_name="gemini-2.5-flash-lite",
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location=os.getenv("VERTEX_AI_LOCATION", "us-central1"),
+            temperature=0,
+            max_output_tokens=8192
         )
 
     def log_action(self, state: AgentState, action: str, reasoning: str = ""):
