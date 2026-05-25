@@ -106,48 +106,12 @@ Flowtica addresses all of these through a single conversational interface backed
 ---
 
 ## System Architecture
+### System Architecture Diagram
 
-```
-┌────────────────────────────────────────────────────────┐
-│                    Mobile App (Expo)                   │
-│         React Native · NativeWind · Redux              │
-└───────────────────────┬────────────────────────────────┘
-                        │ HTTP / Socket.IO
-┌───────────────────────▼────────────────────────────────┐
-│              Flask API + Flask-SocketIO                │
-│                  (Python Backend)                      │
-└───────────────────────┬────────────────────────────────┘
-                        │
-┌───────────────────────▼────────────────────────────────┐
-│             LangGraph Orchestration Engine             │
-│                                                        │
-│  ┌─────────────┐    routes to    ┌──────────────────┐  │
-│  │  Supervisor │ ──────────────► │  Intent Agent    │  │
-│  │    Agent    │ ◄────────────── │  Extraction Agt  │  │
-│  │  (Entry &   │   returns to    │  Memory Agent    │  │
-│  │   Router)   │                 │  Knowledge Agt   │  │
-│  └─────────────┘                 │  Matching Agent  │  │
-│         │                        │  Negotiation Agt │  │
-│         └──────────────────────► │  Booking Agent   │  │
-│                                  │  Scheduling Agt  │  │
-│                                  │  Comms Agent(END)│  │
-│                                  └──────────────────┘  │
-└───────────────────────┬────────────────────────────────┘
-                        │
-        ┌───────────────┼───────────────┐
-        ▼               ▼               ▼
-   ┌─────────┐    ┌──────────┐    ┌──────────┐
-   │ MongoDB │    │ ChromaDB │    │ Supabase │
-   │(Primary)│    │(Vectors) │    │  (Auth)  │
-   └─────────┘    └──────────┘    └──────────┘
-                        │
-              ┌─────────┴──────────┐
-              ▼                    ▼
-       ┌────────────┐     ┌───────────────┐
-       │ Google     │     │  OpenAI GPT   │
-       │ Maps API   │     │  (LLM Brain)  │
-       └────────────┘     └───────────────┘
-```
+<div align="center">
+  <img src="assets/screenshots/Architectrural_Diagram.png" width="85%" />
+</div>
+
 
 ### Multi-Agent Orchestration Flow
 
@@ -499,7 +463,46 @@ The demo covers:
 - End-to-end booking simulation
 - Follow-up reminder scheduling
 - Role switching between Buyer and Seller
+  
+### 📸 App Screenshots
 
+**Onboarding & Auth**
+<div align="center">
+  <img src="assets/screenshots/Auth.jpeg" width="22%" />
+  <img src="assets/screenshots/Account_Type.jpeg" width="22%" />
+  <img src="assets/screenshots/Setup_Provider.jpeg" width="22%" />
+  <img src="assets/screenshots/Location_Model.jpeg" width="22%" />
+</div>
+
+<br/>
+
+**Core Experience**
+<div align="center">
+  <img src="assets/screenshots/Home.jpeg" width="22%" />
+  <img src="assets/screenshots/Customer.jpeg" width="22%" />
+  <img src="assets/screenshots/Provider.jpeg" width="22%" />
+  <img src="assets/screenshots/Switch.jpeg" width="22%" />
+</div>
+
+<br/>
+
+**AI & Booking Flow**
+<div align="center">
+  <img src="assets/screenshots/Provider List.jpeg" width="22%" />
+  <img src="assets/screenshots/Incoming Request.jpeg" width="22%" />
+  <img src="assets/screenshots/Booking.jpeg" width="22%" />
+  <img src="assets/screenshots/Done Service.jpeg" width="22%" />
+</div>
+
+<br/>
+
+**Agent & Settings**
+<div align="center">
+  <img src="assets/screenshots/Orchestration_Panel.jpeg" width="22%" />
+  <img src="assets/screenshots/Live_Agents_Status.jpeg" width="22%" />
+  <img src="assets/screenshots/Add Service.jpeg" width="22%" />
+  <img src="assets/screenshots/Setting.jpeg" width="22%" />
+</div>
 ---
 
 ## Assumptions & Limitations
