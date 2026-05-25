@@ -530,7 +530,6 @@ The demo covers:
 ### Currently In Progress
 These features are built on the backend but still being polished on the frontend:
 
-- [ ] **Notifications & Follow-up System** — Backend logic is complete; frontend integration and display is actively being fixed
 - [ ] **Gemini Live Agent** — Without replacing the current text interface we will integrate a real-time voice-powered AI agent using Gemini Live API
 
 ###  Next Up
