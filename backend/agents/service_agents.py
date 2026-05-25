@@ -497,7 +497,7 @@ class MemoryAgent(BaseAgent):
                                 else datetime.utcnow().isoformat()
                             ),
                             "service": real_request.get("service_type"),
-                            "location": real_request.get("location", "Unknown"),
+                            "service_location": real_request.get("service_location", "Unknown"),
                             "offered_price": real_request.get("offered_price"),
                             "requested_date": real_request.get("requested_date"),
                             "requested_time": real_request.get("requested_time"),
@@ -1089,7 +1089,7 @@ class RequestCreationAgent(BaseAgent):
             # Build and insert document
             customer_name = customer_doc.get("name") or "Valued Client"
             specialization = selected.get("specialization") or service_doc.get("specialization") or "Specialist"
-            location = selected.get("location") or service_doc.get("location") or "Unknown"
+            service_location = selected.get("location") or service_doc.get("service_location") or "Unknown"
 
             request_doc = {
                 "conversation_id": conversation_id,
@@ -1097,20 +1097,17 @@ class RequestCreationAgent(BaseAgent):
                 "provider_name": provider_name,
                 "provider_phone": provider_doc.get("phone") or "Not provided",
                 "provider_email": provider_doc.get("email") or "Not provided",
-                "provider_location": provider_doc.get("location") or "Not provided",
-                "provider_location_data": provider_doc.get("location_data") or {},
+                "provider_location_data": service_doc.get("provider_location_data") or provider_doc.get("location_data") or {},
                 "provider_avatar": provider_doc.get("avatar_url") or "",
                 "customer_supabase_id": customer_supabase_id,
                 "customer_name": customer_name,
                 "customer_phone": customer_doc.get("phone") or "Not provided",
                 "customer_email": customer_doc.get("email") or "Not provided",
-                "customer_location": customer_doc.get("location") or "Not provided",
                 "customer_location_data": customer_doc.get("location_data") or {},
                 "customer_avatar": customer_doc.get("avatar_url") or "",
                 "service_type": service_type,
                 "specialization": specialization,
-                "location": location,
-                "location_data": customer_doc.get("location_data"),
+                "service_location": service_location,
                 "offered_price": offered_price,
                 "requested_date": requested_date,
                 "requested_time": requested_time,
@@ -1394,14 +1391,12 @@ class BookingAgent(BaseAgent):
             "customer_name": request_doc.get("customer_name"),
             "customer_phone": request_doc.get("customer_phone", "Not provided"),
             "customer_email": request_doc.get("customer_email", "Not provided"),
-            "customer_location": request_doc.get("customer_location", "Not provided"),
             "customer_location_data": request_doc.get("customer_location_data") or {},
             "customer_avatar": request_doc.get("customer_avatar", ""),
             "provider_supabase_id": provider_supabase_id,
             "provider_name": request_doc.get("provider_name"),
             "provider_phone": request_doc.get("provider_phone", "Not provided"),
             "provider_email": request_doc.get("provider_email", "Not provided"),
-            "provider_location": request_doc.get("provider_location", "Not provided"),
             "provider_location_data": request_doc.get("provider_location_data") or {},
             "provider_avatar": request_doc.get("provider_avatar", ""),
             "service_type": request_doc.get("service_type"),
@@ -1410,8 +1405,7 @@ class BookingAgent(BaseAgent):
             "price": final_price,
             "requested_date": final_date,
             "requested_time": final_time,
-            "location": request_doc.get("location") or request_doc.get("customer_location", "Not provided"),
-            "location_data": request_doc.get("customer_location_data") or {},
+            "service_location": request_doc.get("service_location") or "Not provided",
             "status": "confirmed",
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),

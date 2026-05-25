@@ -58,7 +58,7 @@ class VectorStoreManager:
         service_type    = (doc.get("service_type") or "").strip()
         specialization  = (doc.get("specialization") or "").strip()
         description     = (doc.get("description") or "").strip()
-        location        = (doc.get("service_location") or doc.get("location") or "").strip()
+        location        = (doc.get("service_location") or "").strip()
         experience      = doc.get("experience_years", 0)
         rating          = doc.get("provider_rating") or doc.get("rating") or 0
         languages       = doc.get("languages") or []
@@ -193,7 +193,7 @@ class VectorStoreManager:
                 "service_name": doc.get("service_name") or "",
                 "service_type": doc.get("service_type") or "",
                 "specialization": doc.get("specialization") or "",
-                "location": doc.get("service_location") or doc.get("location") or "",
+                "location": doc.get("service_location") or "",
                 "provider_supabase_id": doc.get("provider_supabase_id") or "",
                 "rating": doc.get("provider_rating") or doc.get("rating") or 0,
                 "hourly_rate": doc.get("hourly_rate") or 0,

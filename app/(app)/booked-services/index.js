@@ -17,6 +17,7 @@ const StatusBadge = ({ status }) => {
       case 'cancelled': return { bg: '#fef2f2', text: '#ef4444', label: 'Cancelled' };
       case 'confirmed': return { bg: '#ebf5ff', text: '#3b82f6', label: 'Confirmed' };
       case 'pending': return { bg: '#fff7ed', text: '#f97316', label: 'Pending' };
+      case 'review_needed': return { bg: '#fffbeb', text: '#d97706', label: 'Review Needed' };
       default: return { bg: '#f8fafc', text: '#64748b', label: status.charAt(0).toUpperCase() + status.slice(1) };
     }
   };
@@ -181,8 +182,15 @@ export default function BookedServices() {
             const snap = booking.snapshot || {};
             const completed = booking.status === 'completed';
             const cancelled = booking.status === 'cancelled';
-            const upcoming = !completed && !cancelled;
-            const canComplete = upcoming && isPast(booking.requested_date || booking.date, booking.requested_time || booking.time);
+            const providerSubmitted = booking.provider_submitted;
+            const customerSubmitted = booking.customer_submitted;
+            const upcoming = !completed && !cancelled && !customerSubmitted;
+            const canComplete = (upcoming && isPast(booking.requested_date || booking.date, booking.requested_time || booking.time)) || (providerSubmitted && !customerSubmitted);
+
+            let displayStatus = booking.status;
+            if (providerSubmitted && !customerSubmitted && !completed) {
+              displayStatus = 'review_needed';
+            }
 
             return (
               <View key={booking._id} style={s.card}>
@@ -193,7 +201,7 @@ export default function BookedServices() {
                     <Text style={s.priceText}>Price: {booking.price} PKR</Text>
                   </View>
                   <View style={s.statusRow}>
-                    <StatusBadge status={booking.status} />
+                    <StatusBadge status={displayStatus} />
                     <TouchableOpacity onPress={() => handleDeleteBooking(booking._id)} style={s.trashBtn}>
                       <Trash size={16} color="#ef4444" />
                     </TouchableOpacity>
@@ -288,21 +296,31 @@ export default function BookedServices() {
                 {/* Footer Action Buttons */}
                 {upcoming && (
                   <View style={s.cardActions}>
-                    <TouchableOpacity onPress={() => handleCancelBooking(booking)} style={[s.actionBtn, s.cancelBtn]}>
-                      <Trash size={14} color="#ef4444" style={{ marginRight: 6 }} />
-                      <Text style={s.cancelBtnText}>Cancel Service</Text>
-                    </TouchableOpacity>
+                    {!providerSubmitted && (
+                      <TouchableOpacity onPress={() => handleCancelBooking(booking)} style={[s.actionBtn, s.cancelBtn]}>
+                        <Trash size={14} color="#ef4444" style={{ marginRight: 6 }} />
+                        <Text style={s.cancelBtnText}>Cancel Service</Text>
+                      </TouchableOpacity>
+                    )}
 
                     <TouchableOpacity
                       disabled={!canComplete}
                       onPress={() => setRatingModal({ open: true, bookingId: booking._id })}
-                      style={[s.actionBtn, canComplete ? s.completeBtn : s.lockedBtn]}
+                      style={[s.actionBtn, canComplete ? (providerSubmitted ? s.reviewBtn : s.completeBtn) : s.lockedBtn]}
                     >
-                      <CheckCircle size={14} color={canComplete ? "#3b82f6" : "#64748b"} style={{ marginRight: 6 }} />
-                      <Text style={canComplete ? s.completeBtnText : s.lockedBtnText}>
-                        {canComplete ? 'Mark Done' : 'Locked'}
+                      <CheckCircle size={14} color={canComplete ? (providerSubmitted ? "#fff" : "#3b82f6") : "#64748b"} style={{ marginRight: 6 }} />
+                      <Text style={canComplete ? (providerSubmitted ? s.reviewBtnText : s.completeBtnText) : s.lockedBtnText}>
+                        {providerSubmitted ? 'Complete Review' : (canComplete ? 'Mark Done' : 'Locked')}
                       </Text>
                     </TouchableOpacity>
+                  </View>
+                )}
+
+                {customerSubmitted && !providerSubmitted && !completed && (
+                  <View style={{ marginTop: 16, padding: 12, backgroundColor: '#fff7ed', borderRadius: 12, borderWidth: 1, borderColor: '#ffedd5' }}>
+                    <Text style={{ color: '#ea580c', fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
+                      Waiting for provider to submit final job summary.
+                    </Text>
                   </View>
                 )}
               </View>
@@ -394,6 +412,8 @@ const s = StyleSheet.create({
   completeBtnText: { color: '#3b82f6', fontSize: 13, fontWeight: '700' },
   lockedBtn: { backgroundColor: '#f8fafc', borderColor: '#f1f5f9' },
   lockedBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
+  reviewBtn: { backgroundColor: '#8b5cf6', borderColor: '#7c3aed' },
+  reviewBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   modal: { padding: 32, borderRadius: 32, gap: 24 },
   modalTitle: { fontSize: 16, fontWeight: '900', textAlign: 'center', letterSpacing: 1 },
   starRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },

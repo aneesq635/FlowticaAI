@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Platform
+  Platform,
+  TextInput
 } from 'react-native';
 import { MotiView, AnimatePresence } from 'moti';
 import { X, Calendar, Clock, Check, ChevronRight, AlertCircle } from 'lucide-react-native';
@@ -27,6 +28,8 @@ const BookingModal = ({ visible, onClose, provider, customer_id, conversation_id
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [availability, setAvailability] = useState({ blocked_dates: [], taken_slots: [] });
+  const providerRate = provider?.price_per_hour || provider?.hourly_rate || 50;
+  const [offeredPrice, setOfferedPrice] = useState(providerRate.toString());
 
   // Generate next 14 days
   const dates = useMemo(() => {
@@ -90,12 +93,13 @@ const BookingModal = ({ visible, onClose, provider, customer_id, conversation_id
         conversation_id: conversation_id,
         service_type: provider.service_name || provider.main_service || provider.service_type || 'Service',
         scheduled_time: scheduled_time,
-        price: provider.price_per_hour || provider.hourly_rate || 50,
+        customer_offered_price: parseFloat(offeredPrice),
+        provider_expected_price: providerRate
       };
       console.log('[BookingModal] Submitting payload:', JSON.stringify(payload));
       const data = await api.post('/api/bookings', payload);
       if (data.success) {
-        Alert.alert('Booking Confirmed!', `Your session with ${provider.provider_name || provider.name} is scheduled for ${selectedDate} at ${selectedSlot}.`);
+        Alert.alert('Booking Confirmed!', `Your request for Rs. ${offeredPrice} has been sent to ${provider.provider_name || provider.name}. They will confirm shortly.`);
         onClose();
       } else {
         Alert.alert('Booking Failed', data.error || 'Something went wrong.');
@@ -176,19 +180,19 @@ const BookingModal = ({ visible, onClose, provider, customer_id, conversation_id
                         disabled={isBlocked}
                         onPress={() => setSelectedDate(d.full)}
                         className={`mr-3 items-center justify-center w-16 h-20 rounded-2xl border-2 ${isSelected
-                            ? (isDark ? 'bg-white border-white' : 'bg-slate-900 border-slate-900')
-                            : (isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100')
+                          ? (isDark ? 'bg-white border-white' : 'bg-slate-900 border-slate-900')
+                          : (isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100')
                           } ${isBlocked ? 'opacity-20' : 'opacity-100'}`}
                       >
                         <Text className={`text-[10px] font-bold uppercase ${isSelected
-                            ? (isDark ? 'text-slate-900' : 'text-white')
-                            : (isDark ? 'text-slate-500' : 'text-slate-400')
+                          ? (isDark ? 'text-slate-900' : 'text-white')
+                          : (isDark ? 'text-slate-500' : 'text-slate-400')
                           }`}>
                           {d.day}
                         </Text>
                         <Text className={`text-xl font-black mt-1 ${isSelected
-                            ? (isDark ? 'text-slate-900' : 'text-white')
-                            : (isDark ? 'text-slate-200' : 'text-slate-900')
+                          ? (isDark ? 'text-slate-900' : 'text-white')
+                          : (isDark ? 'text-slate-200' : 'text-slate-900')
                           }`}>
                           {d.date}
                         </Text>
@@ -218,13 +222,13 @@ const BookingModal = ({ visible, onClose, provider, customer_id, conversation_id
                           disabled={isTaken}
                           onPress={() => setSelectedSlot(slot)}
                           className={`w-[30%] mb-3 py-4 rounded-xl items-center justify-center border ${isSelected
-                              ? (isDark ? 'bg-white border-white' : 'bg-slate-900 border-slate-900')
-                              : (isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-100')
+                            ? (isDark ? 'bg-white border-white' : 'bg-slate-900 border-slate-900')
+                            : (isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-100')
                             } ${isTaken ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}
                         >
                           <Text className={`text-sm font-bold ${isSelected
-                              ? (isDark ? 'text-slate-900' : 'text-white')
-                              : (isDark ? 'text-slate-300' : 'text-slate-900')
+                            ? (isDark ? 'text-slate-900' : 'text-white')
+                            : (isDark ? 'text-slate-300' : 'text-slate-900')
                             }`}>
                             {slot}
                           </Text>
@@ -234,18 +238,51 @@ const BookingModal = ({ visible, onClose, provider, customer_id, conversation_id
                   </View>
                 )}
 
-                {/* Price Info */}
-                <View className={`mt-6 p-5 rounded-3xl flex-row items-center justify-between ${isDark ? 'bg-slate-900/40' : 'bg-slate-50'}`}>
-                  <View className="flex-row items-center">
-                    <View className={`w-10 h-10 rounded-full items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-                      <Clock size={18} color={isDark ? '#94a3b8' : '#64748b'} />
+                {/* Price Negotiation */}
+                <View className={`mt-6 p-5 rounded-3xl ${isDark ? 'bg-slate-900/40' : 'bg-slate-50'}`}>
+                  <View className="flex-row items-center justify-between mb-4">
+                    <View className="flex-row items-center">
+                      <View className={`w-10 h-10 rounded-full items-center justify-center ${isDark ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+                        <Clock size={18} color={isDark ? '#94a3b8' : '#64748b'} />
+                      </View>
+                      <View className="ml-3">
+                        <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Provider rate</Text>
+                        <Text className={`text-sm font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Rs. {providerRate}/hr</Text>
+                      </View>
                     </View>
-                    <View className="ml-3">
-                      <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Estimated Price</Text>
-                      <Text className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Rs. {provider.price_per_hour || provider.hourly_rate || 50}/hr</Text>
+                    <View className="items-end">
+                      <Text className={`text-[10px] font-bold uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Min. Offer (70%)</Text>
+                      <Text className={`text-sm font-bold text-blue-500`}>Rs. {Math.round(providerRate * 0.7)}</Text>
                     </View>
                   </View>
-                  <ChevronRight size={20} color={isDark ? '#334155' : '#cbd5e1'} />
+
+                  <View className={`h-[1px] ${isDark ? 'bg-slate-800' : 'bg-slate-200'} mb-4`} />
+
+                  <View>
+                    <Text className={`text-[10px] font-bold uppercase mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Your Offer Price (Rs.)</Text>
+                    <View className={`flex-row items-center px-4 h-14 rounded-2xl border ${parseFloat(offeredPrice) < providerRate * 0.7
+                        ? 'border-red-500 bg-red-500/10'
+                        : (isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200')
+                      }`}>
+                      <Text className={`mr-2 text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Rs.</Text>
+                      <TextInput
+                        className={`flex-1 text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}
+                        keyboardType="numeric"
+                        value={offeredPrice}
+                        onChangeText={setOfferedPrice}
+                        placeholder="Enter your price..."
+                        placeholderTextColor={isDark ? '#475569' : '#94a3b8'}
+                      />
+                      {parseFloat(offeredPrice) < providerRate * 0.7 && (
+                        <AlertCircle size={18} color="#ef4444" />
+                      )}
+                    </View>
+                    {parseFloat(offeredPrice) < providerRate * 0.7 && (
+                      <Text className="text-red-500 text-[10px] font-bold mt-1 ml-1">
+                        Offer must be at least 70% of the provider rate.
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </ScrollView>
 
@@ -259,11 +296,11 @@ const BookingModal = ({ visible, onClose, provider, customer_id, conversation_id
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  disabled={!selectedSlot || !selectedDate || confirming}
+                  disabled={!selectedSlot || !selectedDate || confirming || parseFloat(offeredPrice) < providerRate * 0.7}
                   onPress={handleConfirm}
-                  className={`flex-[2] py-5 rounded-3xl items-center justify-center ${!selectedSlot || !selectedDate
-                      ? (isDark ? 'bg-slate-800' : 'bg-slate-200')
-                      : (isDark ? 'bg-white' : 'bg-slate-900')
+                  className={`flex-[2] py-5 rounded-3xl items-center justify-center ${!selectedSlot || !selectedDate || parseFloat(offeredPrice) < providerRate * 0.7
+                    ? (isDark ? 'bg-slate-800' : 'bg-slate-200')
+                    : (isDark ? 'bg-white' : 'bg-slate-900')
                     }`}
                 >
                   {confirming ? (

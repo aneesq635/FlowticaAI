@@ -1,312 +1,207 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Animated, Easing, StyleSheet } from 'react-native';
-import { useSelector } from 'react-redux';
-import { MotiView, AnimatePresence } from 'moti';
+import React, { useRef, useMemo, useEffect } from 'react';
 import {
-  User, Cpu, Zap, Database, Layers,
-  CheckCircle, MessageSquare, ArrowRight, ShieldCheck,
-  Search, Calculator, Clock, MessageCircle, AlertCircle
+  View, Text, Animated, StyleSheet, Dimensions, useWindowDimensions,
+} from 'react-native';
+import { useSelector } from 'react-redux';
+import { MotiView } from 'moti';
+import {
+  Cpu, Zap, Database, Layers, ShieldCheck,
+  Search, Clock, MessageCircle, Terminal, Handshake, Send,
+  Activity,
 } from 'lucide-react-native';
 
-const NODE_WIDTH = 140;
-const CONNECTOR_WIDTH = 60;
+const { width: SW } = Dimensions.get('window');
+const NODE_W   = 80;   // clickable node width
+const SPACING  = 130;  // distance between node centres
 
-const AnimatedPath = ({ active }) => {
-  const pulseAnim = useRef(new Animated.Value(0)).current;
+const AGENTS = [
+  { id: 'supervisor',       stateKey: 'supervisor',           label: 'Supervisor', icon: Cpu          },
+  { id: 'intent',           stateKey: 'intent',               label: 'Intent',     icon: Zap          },
+  { id: 'extraction',       stateKey: 'extraction',           label: 'Extraction', icon: Search       },
+  { id: 'memory',           stateKey: 'memory',               label: 'Memory',     icon: Terminal     },
+  { id: 'knowledge',        stateKey: 'knowledge',            label: 'Retrieval',  icon: Database     },
+  { id: 'matching',         stateKey: 'matching',             label: 'Matching',   icon: Layers       },
+  { id: 'negotiation',      stateKey: 'negotiation',          label: 'Negotiation',icon: Handshake    },
+  { id: 'request_creation', stateKey: 'request_creation',     label: 'Proposal',   icon: Send         },
+  { id: 'booking',          stateKey: 'booking',              label: 'Booking',    icon: ShieldCheck  },
+  { id: 'scheduling',       stateKey: 'scheduling',           label: 'Scheduling', icon: Clock        },
+  { id: 'communication',    stateKey: 'communication',        label: 'Frontier',   icon: MessageCircle},
+];
 
-  useEffect(() => {
-    if (active) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1500,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 2,
-            duration: 0,
-            useNativeDriver: true,
-          })
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(0);
-    }
-  }, [active]);
+// ── Connector line between two nodes ────────────────────────
+const Connector = ({ done, active }) => (
+  <View className="justify-center items-center" style={{ width: SPACING - NODE_W, marginHorizontal: -6 }}>
+    {/* Base line */}
+    <View
+      className={`rounded-full ${done ? 'bg-emerald-400' : 'bg-white/5'}`}
+      style={{ width: '100%', height: done ? 2 : 1 }}
+    />
+    {/* Moving pulse */}
+    {active && (
+      <MotiView
+        from={{ left: -24, opacity: 0 }}
+        animate={{ left: SPACING - NODE_W - 16, opacity: 1 }}
+        transition={{ loop: true, type: 'timing', duration: 1200 }}
+        style={{
+          position: 'absolute',
+          width: 24, height: 2,
+          borderRadius: 1,
+          backgroundColor: '#fff',
+          shadowColor: '#fff',
+          shadowRadius: 6,
+          shadowOpacity: 1,
+        }}
+      />
+    )}
+  </View>
+);
 
-  const translateX = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-CONNECTOR_WIDTH, CONNECTOR_WIDTH],
-  });
-
-  return (
-    <View style={styles.connectorContainer}>
-      <View style={[styles.connectorLine, { backgroundColor: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)' }]} />
-      {active && (
-        <Animated.View
-          style={[
-            styles.pulseContainer,
-            { transform: [{ translateX }] }
-          ]}
-        >
-          <View style={styles.pulseNode} />
-        </Animated.View>
-      )}
-    </View>
-  );
-};
-
-const PipelineNode = ({ name, icon: Icon, active, completed, isDark, type = 'agent' }) => {
-  const isBoundary = type === 'boundary';
-
-  const bgColor = active
-    ? (isDark ? '#0f172a' : '#f8fafc')
-    : completed
-      ? (isDark ? '#021e16' : '#ecfdf5')
-      : (isDark ? 'rgba(15,23,42,0.6)' : '#ffffff');
-
-  const borderColor = active
-    ? '#ffffff'
-    : completed
-      ? '#10b981'
-      : (isDark ? 'rgba(255,255,255,0.1)' : '#e2e8f0');
+// ── Single pipeline node ─────────────────────────────────────
+const PipelineNode = ({ agent, status, isActive, isDark }) => {
+  const Icon        = agent.icon;
+  const isRunning   = isActive || status === 'running';
+  const isCompleted = status === 'completed';
 
   return (
-    <View style={styles.nodeWrapper}>
+    <View className="items-center" style={{ width: NODE_W }}>
       <MotiView
         animate={{
-          scale: active ? 1.05 : 1,
-          borderColor: borderColor,
+          scale:      isRunning ? 1.18 : 1,
+          translateY: isRunning ? -8    : 0,
+          opacity:    isRunning || isCompleted ? 1 : 0.4,
         }}
-        transition={{ type: 'timing', duration: 400 }}
-        style={[
-          styles.nodeCircle,
-          {
-            backgroundColor: bgColor,
-            borderWidth: 1.5,
-            width: isBoundary ? 60 : 100,
-            height: isBoundary ? 60 : 100,
-            borderRadius: isBoundary ? 30 : 20,
-          }
-        ]}
+        transition={{ type: 'spring', damping: 14, stiffness: 160 }}
+        className={`w-[54px] h-[54px] rounded-[18px] items-center justify-center border-2 ${
+          isRunning
+            ? 'bg-white border-white'
+            : isCompleted
+              ? 'border-emerald-400'
+              : 'border-white/10'
+        } ${!isRunning && !isCompleted ? (isDark ? 'bg-white/[0.04]' : 'bg-white') : ''}`}
+        style={isRunning ? {
+          shadowColor: '#fff',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.25,
+          shadowRadius: 12,
+          elevation: 8,
+        } : isCompleted ? {
+          shadowColor: '#34d399',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+          elevation: 4,
+        } : {}}
       >
-        <Icon size={isBoundary ? 24 : 32} color={active ? '#fff' : (completed ? '#10b981' : '#475569')} />
+        <Icon
+          size={22}
+          color={isRunning ? '#0f172a' : isCompleted ? '#34d399' : '#64748b'}
+          strokeWidth={isRunning ? 2.5 : 2}
+        />
+      </MotiView>
 
-        {active && (
-          <MotiView
-            from={{ opacity: 0.5, scale: 1 }}
-            animate={{ opacity: 0, scale: 1.4 }}
-            transition={{ loop: true, duration: 2000, type: 'timing' }}
-            style={[StyleSheet.absoluteFill, styles.activeGlow, { borderRadius: isBoundary ? 30 : 20 }]}
-          />
+      {/* Label */}
+      <MotiView
+        animate={{ opacity: isRunning ? 1 : 0.6, translateY: isRunning ? -4 : 0 }}
+        transition={{ type: 'timing', duration: 200 }}
+        className="items-center mt-2.5"
+      >
+        <Text
+          className={`text-[9px] tracking-[0.8px] ${
+            isRunning
+              ? 'font-black text-white'
+              : isCompleted
+                ? 'font-bold text-emerald-400'
+                : isDark ? 'font-semibold text-slate-500' : 'font-semibold text-slate-400'
+          }`}
+        >
+          {agent.label.toUpperCase()}
+        </Text>
+        {isRunning && (
+          <Text className="text-[7px] font-black text-white/50 tracking-widest mt-0.5">
+            ACTIVE
+          </Text>
         )}
       </MotiView>
-      <Text
-        numberOfLines={1}
-        style={[
-          styles.nodeLabel,
-          { color: active ? '#fff' : (isDark ? '#94a3b8' : '#475569') }
-        ]}
-      >
-        {name.toUpperCase()}
-      </Text>
-      {active && (
-        <MotiView
-          from={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          style={styles.activeTag}
-        >
-          <Text style={styles.activeText}>RUNNING</Text>
-        </MotiView>
-      )}
     </View>
   );
 };
 
+// ── Main Pipeline Graph ──────────────────────────────────────
 const PipelineGraph = () => {
-  const { pipeline, activeAgents } = useSelector(state => state.orchestration);
-  const isDark = useSelector(state => state.orchestration.theme) === 'dark';
+  const { activeAgents, theme } = useSelector(s => s.orchestration);
+  const isDark   = theme === 'dark';
+  const { width } = useWindowDimensions();
+  const listRef   = useRef(null);
+  const scrollX   = useRef(new Animated.Value(0)).current;
 
-  // Comprehensive Agent List mapped to Redux State Keys
-  const agents = [
-    { id: 'supervisor', stateKey: 'Supervisor', label: 'Supervisor', icon: Cpu },
-    { id: 'intent', stateKey: 'Intent Agent', label: 'Intent', icon: Zap },
-    { id: 'extraction', stateKey: 'Extraction Agent', label: 'Extraction', icon: Search },
-    { id: 'knowledge', stateKey: 'Knowledge Agent', label: 'Knowledge', icon: Database },
-    { id: 'matching', stateKey: 'Matching Agent', label: 'Matching', icon: Layers },
-    { id: 'pricing', stateKey: 'Pricing Agent', label: 'Pricing', icon: Calculator },
-    { id: 'booking', stateKey: 'Booking Agent', label: 'Booking', icon: ShieldCheck },
-    { id: 'scheduling', stateKey: 'Scheduling Agent', label: 'Scheduling', icon: Clock },
-    { id: 'followup', stateKey: 'Follow-up Agent', label: 'Support', icon: MessageCircle },
-  ];
+  // Find the running agent index
+  const activeIndex = useMemo(() => {
+    const idx = AGENTS.findIndex(a =>
+      activeAgents[a.stateKey] === 'running' ||
+      activeAgents[a.id]       === 'running'
+    );
+    return idx === -1 ? 0 : idx;
+  }, [activeAgents]);
 
-  const getAgentStatus = (agent) => {
-    // Check both lowercase and exact state key
-    return activeAgents[agent.stateKey] || activeAgents[agent.id] || 'idle';
+  // Auto-scroll to active node
+  useEffect(() => {
+    if (listRef.current) {
+      try {
+        listRef.current.scrollToIndex({
+          index:        activeIndex,
+          animated:     true,
+          viewPosition: 0.5,
+        });
+      } catch (_) { /* guard against not-yet-mounted */ }
+    }
+  }, [activeIndex]);
+
+  const renderItem = ({ item, index }) => {
+    const status      = activeAgents[item.stateKey] || activeAgents[item.id] || 'idle';
+    const isActive    = index === activeIndex;
+    const isDone      = status === 'completed' || index < activeIndex;
+
+    return (
+      <View className="flex-row items-center" style={{ width: SPACING }}>
+        <PipelineNode agent={item} status={status} isActive={isActive} isDark={isDark} />
+        {index < AGENTS.length - 1 && <Connector done={isDone} active={isActive} />}
+      </View>
+    );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? 'rgba(2,6,23,0.3)' : '#f1f5f9' }]}>
-      <View style={styles.header}>
-        <View style={styles.headerDot} />
-        <Text style={styles.headerTitle}>ORCHESTRATION ENGINE NODES</Text>
+    <View
+      className={`border-b ${isDark ? 'border-white/5' : 'border-slate-100'}`}
+      style={{ height: 180, justifyContent: 'center' }}
+    >
+      {/* Header row */}
+      <View className="flex-row items-center gap-2 px-5 mb-5">
+        <Activity size={10} color="#64748b" />
+        <Text className="text-[9px] font-black tracking-[2.5px] text-slate-500">
+          ORCHESTRATION ENGINE RUNTIME
+        </Text>
       </View>
 
-      <ScrollView
+      <Animated.FlatList
+        ref={listRef}
+        data={AGENTS}
+        renderItem={renderItem}
+        keyExtractor={item => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* User Input Boundary */}
-        <PipelineNode
-          name="User"
-          icon={User}
-          type="boundary"
-          completed={Object.values(activeAgents).some(v => v === 'completed' || v === 'running')}
-          isDark={isDark}
-        />
-
-        <AnimatedPath active={getAgentStatus(agents[0]) === 'running' || pipeline === agents[0].id} />
-
-        {/* Dynamic Agent Nodes */}
-        {agents.map((agent, index) => {
-          const status = getAgentStatus(agent);
-          const nextAgent = agents[index + 1];
-          const isActive = pipeline === agent.id || status === 'running';
-
-          return (
-            <React.Fragment key={agent.id}>
-              <PipelineNode
-                name={agent.label}
-                icon={agent.icon}
-                active={isActive}
-                completed={status === 'completed'}
-                isDark={isDark}
-              />
-              {index < agents.length - 1 && (
-                <AnimatedPath
-                  active={
-                    (status === 'completed' && getAgentStatus(nextAgent) === 'running') ||
-                    (pipeline === nextAgent.id)
-                  }
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
-
-        <AnimatedPath active={getAgentStatus(agents[agents.length - 1]) === 'completed'} />
-
-        {/* Output Boundary */}
-        <PipelineNode
-          name="Result"
-          icon={CheckCircle}
-          type="boundary"
-          completed={getAgentStatus(agents[agents.length - 1]) === 'completed'}
-          isDark={isDark}
-        />
-      </ScrollView>
+        contentContainerStyle={{ paddingHorizontal: width / 2 - NODE_W / 2, alignItems: 'center' }}
+        snapToInterval={SPACING}
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        initialScrollIndex={activeIndex}
+        getItemLayout={(_, index) => ({ length: SPACING, offset: SPACING * index, index })}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: true }
+        )}
+      />
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    borderRadius: 24,
-    padding: 24,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 32,
-    gap: 10,
-  },
-  headerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#fff',
-    shadowColor: '#fff',
-    shadowRadius: 10,
-    shadowOpacity: 0.5,
-  },
-  headerTitle: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#94a3b8',
-    letterSpacing: 2,
-  },
-  scrollContent: {
-    alignItems: 'center',
-    paddingRight: 40,
-  },
-  nodeWrapper: {
-    alignItems: 'center',
-    width: 100,
-  },
-  nodeCircle: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-  activeGlow: {
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  nodeLabel: {
-    marginTop: 12,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  activeTag: {
-    position: 'absolute',
-    top: -24,
-    backgroundColor: '#fff',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  activeText: {
-    fontSize: 8,
-    fontWeight: '900',
-    color: '#0f172a',
-  },
-  connectorContainer: {
-    width: CONNECTOR_WIDTH,
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: -10,
-  },
-  connectorLine: {
-    width: '100%',
-    height: 2,
-    borderRadius: 1,
-  },
-  pulseContainer: {
-    position: 'absolute',
-    width: CONNECTOR_WIDTH,
-    height: 10,
-    justifyContent: 'center',
-  },
-  pulseNode: {
-    width: 8,
-    height: 2,
-    backgroundColor: '#fff',
-    borderRadius: 1,
-    shadowColor: '#fff',
-    shadowRadius: 10,
-    shadowOpacity: 1,
-  },
-});
 
 export default PipelineGraph;

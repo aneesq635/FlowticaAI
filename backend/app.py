@@ -1415,7 +1415,7 @@ def get_provider_profile(supabase_id):
                         "name": user_doc.get("name") or profile.get("name"),
                         "phone": user_doc.get("phone") or profile.get("phone"),
                         "email": user_doc.get("email") or profile.get("email"),
-                        "location": user_doc.get("location") or profile.get("location"),
+                        "location_data": user_doc.get("location_data") or profile.get("location_data"),
                         "avatar_url": user_doc.get("avatar_url") or profile.get("avatar_url")
                     }}
                 )
@@ -1464,7 +1464,6 @@ def build_enriched_service_document(data, existing_id=None):
     provider_doc = db.provider_info.find_one({"supabase_id": provider_supabase_id})
     provider_name = "Unknown Provider"
     provider_email = ""
-    provider_location = ""
     provider_rating = 0.0
     reliability_score = 0.0
     review_count = 0
@@ -1476,7 +1475,6 @@ def build_enriched_service_document(data, existing_id=None):
         if not provider_phone:
             provider_phone = provider_doc.get("phone") or ""
         provider_email = provider_doc.get("email") or provider_email
-        provider_location = provider_doc.get("location") or provider_location
         provider_location_data = provider_doc.get("location_data") or {}
         provider_rating = float(provider_doc.get("rating") or 0.0)
         reliability_score = float(provider_doc.get("reliability_score") or 0.0)
@@ -1513,27 +1511,9 @@ def build_enriched_service_document(data, existing_id=None):
     emergency_availability = data.get("emergency_availability") in [True, "true", "True"]
     response_speed = int(data.get("response_speed") or 30) # Default 30 mins
     
-    # Fix Location Ownership (Official Rule: location_data MUST be Service Location)
-    # Geocode the service address
-    service_location_data = {}
-    try:
-        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY"))
-        geocode_result = gmaps.geocode(service_location)
-        if geocode_result:
-            loc = geocode_result[0]['geometry']['location']
-            service_location_data = {
-                "latitude": loc['lat'],
-                "longitude": loc['lng'],
-                "address": geocode_result[0].get('formatted_address', service_location)
-            }
-        else:
-            # Fallback if geocoding fails but we have previous data
-            if existing_id:
-                existing = db.service_providers.find_one({"_id": ObjectId(existing_id)})
-                if existing:
-                    service_location_data = existing.get("location_data", {})
-    except Exception as e:
-        print(f"[GEOCODE ERROR] {e}")
+    # provider_location_data is already sourced from provider_info/users above.
+    # We DO NOT geocode the service_location anymore.
+    # service_location remains a string representating the area.
 
     # Build complete snapshot service document
     enriched = {
@@ -1541,8 +1521,7 @@ def build_enriched_service_document(data, existing_id=None):
         "provider_name": provider_name,
         "provider_phone": provider_phone,
         "provider_email": provider_email,
-        "provider_location": provider_location,
-        "location_data": service_location_data, # Official coordinates for the service
+        "provider_location_data": provider_location_data,
         "provider_rating": provider_rating,
         
         "service_name": service_name,
@@ -1563,7 +1542,7 @@ def build_enriched_service_document(data, existing_id=None):
         
         # Legacy/Compatibility mappings
         "name": provider_name,
-        "location": service_location,
+        "service_location": service_location,
         "rating": provider_rating,
         "phone": provider_phone, # Phase 6.8: Ensure 'phone' field is also populated
         "pricing": {
@@ -2087,42 +2066,76 @@ def complete_booking(booking_id):
         data = request.json
         rating = data.get("rating", 5)
         feedback = data.get("feedback", "")
+        note = data.get("note", "")
 
         booking = db.bookings.find_one({"_id": ObjectId(booking_id)})
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
 
-        # Save to completed_services
-        db.completed_services.insert_one({
-            "booking_id": booking_id,
-            "customer_id": booking.get("customer_supabase_id"),
-            "provider_id": booking.get("provider_supabase_id"),
+        # 1. Update Customer Completion Data
+        customer_completion = {
             "rating": rating,
             "feedback": feedback,
-            "completed_at": datetime.now()
-        })
+            "note": note,
+            "submitted_at": datetime.now(),
+            "submitted": True
+        }
 
-        # Update provider stats (rating from customer)
+        update_query = {
+            "$set": {
+                "customer_completion": customer_completion,
+                "customer_submitted": True,
+                "updated_at": datetime.now()
+            }
+        }
+
+        # 2. Check if both sides have submitted to finalize status
+        # If provider has already submitted OR if this was a cancelled job being closed
+        if booking.get("provider_submitted") or booking.get("status") == "cancelled":
+             update_query["$set"]["status"] = "completed"
+             update_query["$set"]["completion_fully_submitted"] = True
+             final_status = "completed"
+        else:
+             final_status = booking.get("status")
+
+        db.bookings.update_one({"_id": ObjectId(booking_id)}, update_query)
+        
+        # 3. Save to completed_services (legacy/aggregated storage)
+        db.completed_services.update_one(
+            {"booking_id": booking_id},
+            {
+                "$set": {
+                    "customer_id": booking.get("customer_supabase_id"),
+                    "provider_id": booking.get("provider_supabase_id"),
+                    "rating": rating,
+                    "feedback": feedback,
+                    "customer_note": note,
+                    "customer_submitted_at": datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        # 4. Update provider stats if final rating received
         provider_model.complete_job(booking.get("provider_supabase_id"), float(rating), hours=0, earnings=0)
 
-        # Update booking status
-        db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": {"status": "completed"}})
-        
-        # Send Notification to Provider
+        # 5. Send Notification to Provider
         db.notifications.insert_one({
             "user_supabase_id": booking.get("provider_supabase_id"),
             "role": "seller",
             "type": "completed",
-            "title": "Job Completed",
-            "message": f"Customer marked your {booking.get('service_type')} job as completed and left a {rating}-star rating.",
+            "title": "Customer Review Submitted",
+            "message": f"Customer left a {rating}-star rating for your {booking.get('service_type')} job.",
             "related_id": booking_id,
             "status": "unread",
             "created_at": datetime.now()
         })
         socketio.emit('booking_notification', {"user_supabase_id": booking.get("provider_supabase_id")})
+        socketio.emit('booking_updated', {"booking_id": booking_id, "status": final_status})
 
         return jsonify({"success": True})
     except Exception as e:
+        print(f"!!! API ERROR (complete_booking): {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/bookings/<booking_id>/provider-complete", methods=["POST"])
@@ -2138,42 +2151,73 @@ def provider_complete_booking(booking_id):
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
 
-        # Save to completed_services
-        db.completed_services.insert_one({
-            "booking_id": booking_id,
-            "customer_id": booking.get("customer_supabase_id"),
-            "provider_id": booking.get("provider_supabase_id"),
+        # 1. Update Provider Completion Data
+        provider_completion = {
             "hours": hours,
             "earnings": earnings,
-            "provider_note": note,
-            "completed_by": "provider",
-            "completed_at": datetime.now()
-        })
+            "note": note,
+            "submitted_at": datetime.now(),
+            "submitted": True
+        }
 
-        # Update provider stats (no new rating yet, so pass current or just 5)
-        # We will assume they just get hours and earnings, rating remains same via logic in model (or pass 5 to average it out, but best is to just ignore rating shift. Our complete_job averages it, we can just pass current rating).
+        update_query = {
+            "$set": {
+                "provider_completion": provider_completion,
+                "provider_submitted": True,
+                "updated_at": datetime.now()
+            }
+        }
+
+        # 2. Check if both sides have submitted to finalize status
+        # If customer has already submitted OR if this was a cancelled job being closed
+        if booking.get("customer_submitted") or booking.get("status") == "cancelled":
+             update_query["$set"]["status"] = "completed"
+             update_query["$set"]["completion_fully_submitted"] = True
+             final_status = "completed"
+        else:
+             final_status = booking.get("status")
+
+        db.bookings.update_one({"_id": ObjectId(booking_id)}, update_query)
+
+        # 3. Save to completed_services (legacy/aggregated storage)
+        db.completed_services.update_one(
+            {"booking_id": booking_id},
+            {
+                "$set": {
+                    "customer_id": booking.get("customer_supabase_id"),
+                    "provider_id": booking.get("provider_supabase_id"),
+                    "hours": hours,
+                    "earnings": earnings,
+                    "provider_note": note,
+                    "provider_submitted_at": datetime.now(),
+                    "completed_by": "provider"
+                }
+            },
+            upsert=True
+        )
+
+        # 4. Update provider stats (hours/earnings)
         provider_doc = db.provider_info.find_one({"supabase_id": booking.get("provider_supabase_id")})
         current_rating = provider_doc.get("rating", 5.0) if provider_doc else 5.0
         provider_model.complete_job(booking.get("provider_supabase_id"), current_rating, hours=hours, earnings=earnings)
 
-        # Update booking status
-        db.bookings.update_one({"_id": ObjectId(booking_id)}, {"$set": {"status": "completed"}})
-        
-        # Send Notification to Customer
+        # 5. Send Notification to Customer
         db.notifications.insert_one({
             "user_supabase_id": booking.get("customer_supabase_id"),
             "role": "buyer",
             "type": "completed",
-            "title": "Job Completed",
-            "message": f"Provider marked your {booking.get('service_type')} job as completed.",
+            "title": "Provider Job Summary Submitted",
+            "message": f"Provider has submitted the work summary for your {booking.get('service_type')} job.",
             "related_id": booking_id,
             "status": "unread",
             "created_at": datetime.now()
         })
         socketio.emit('booking_notification', {"user_supabase_id": booking.get("customer_supabase_id")})
+        socketio.emit('booking_updated', {"booking_id": booking_id, "status": final_status})
 
         return jsonify({"success": True})
     except Exception as e:
+        print(f"!!! API ERROR (provider_complete_booking): {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/bookings/<booking_id>", methods=["DELETE"])
@@ -2281,16 +2325,31 @@ def create_direct_booking():
         customer_id = data.get("customer_supabase_id")
         service_type = data.get("service_type")
         scheduled_time = data.get("scheduled_time") # ISO String
-        price = data.get("price")
+        customer_offered_price = data.get("customer_offered_price")
+        provider_expected_price = data.get("provider_expected_price")
         
         # Phase 6.5: Detailed error reporting
         missing = []
         if not provider_id: missing.append("provider_supabase_id")
         if not customer_id: missing.append("customer_supabase_id")
         if not scheduled_time: missing.append("scheduled_time")
+        if customer_offered_price is None: missing.append("customer_offered_price")
+        if provider_expected_price is None: missing.append("provider_expected_price")
+        
         if missing:
             error_msg = f"Missing required booking fields: {', '.join(missing)}"
             return jsonify({"error": error_msg}), 400
+
+        # Implement 70% threshold validation
+        try:
+            offer = float(customer_offered_price)
+            expected = float(provider_expected_price)
+            if offer < (expected * 0.7):
+                return jsonify({
+                    "error": f"Offer price (Rs. {offer}) is too low relative to provider's rate. Minimum allowed is Rs. {int(expected * 0.7)}."
+                }), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid price format"}), 400
 
         # Note: We check conflict against FINALIZED bookings only (Correction 1)
         existing = db.bookings.find_one({
@@ -2356,7 +2415,9 @@ def create_direct_booking():
             "customer_location": cust_doc.get("location") if cust_doc else "",
             "customer_location_data": cust_doc.get("location_data") if cust_doc else data.get("location_data", {}),
             
-            "offered_price": price,
+            "customer_offered_price": offer,
+            "provider_expected_price": expected,
+            "offered_price": offer,
             "requested_date": booking_date,
             "requested_time": booking_slot,
             "location": data.get("location"),
@@ -2373,7 +2434,9 @@ def create_direct_booking():
         socketio.emit('request_status_updated', {
             "provider_id": provider_id,
             "request_id": request_id,
-            "status": "pending"
+            "status": "pending",
+            "customer_name": req_doc.get("customer_name"),
+            "offered_price": offer
         })
         
         return jsonify({"success": True, "request_id": request_id})

@@ -235,35 +235,41 @@ const ChatMessage = ({ message, onBook, onRespondToCounter }) => {
   );
 };
 const OrchestrationStatus = () => {
+  const dispatch = useDispatch();
   const isDark = useSelector(state => state.orchestration.theme) === 'dark';
   const orchestrationState = useSelector(state => state.orchestration.activeState);
 
   if (!orchestrationState) return null;
 
   return (
-    <MotiView
-      from={{ height: 0, opacity: 0 }}
-      animate={{ height: 52, opacity: 1 }}
-      className={`px-5 flex-row items-center justify-between border-b ${isDark ? 'bg-slate-950 border-slate-900' : 'bg-slate-50 border-slate-200'}`}
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => dispatch(setEngineExpanded(true))}
     >
-      <View className="flex-row items-center">
-        <MotiView
-          from={{ opacity: 0.4 }}
-          animate={{ opacity: 1 }}
-          transition={{ loop: true, type: 'timing', duration: 1000 }}
-          className={`w-2 h-2 rounded-full mr-3 ${isDark ? 'bg-slate-500' : 'bg-slate-400'}`}
-        />
-        <Text className={`text-xs font-black ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          Agentic Orchestration Active
-        </Text>
-      </View>
-      <View className="flex-row items-center">
-        <Activity size={14} color={isDark ? '#475569' : '#94a3b8'} strokeWidth={2.5} />
-        <Text className={`text-xs ml-2 font-black ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-          {orchestrationState.toUpperCase()}
-        </Text>
-      </View>
-    </MotiView>
+      <MotiView
+        from={{ height: 0, opacity: 0 }}
+        animate={{ height: 52, opacity: 1 }}
+        className={`px-5 flex-row items-center justify-between border-b ${isDark ? 'bg-slate-950 border-slate-900' : 'bg-slate-50 border-slate-200'}`}
+      >
+        <View className="flex-row items-center">
+          <MotiView
+            from={{ opacity: 0.4 }}
+            animate={{ opacity: 1 }}
+            transition={{ loop: true, type: 'timing', duration: 1000 }}
+            className={`w-2 h-2 rounded-full mr-3 ${isDark ? 'bg-emerald-500' : 'bg-emerald-400'}`}
+          />
+          <Text className={`text-xs font-black ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            {orchestrationState.toUpperCase()} ACTIVE
+          </Text>
+        </View>
+        <View className="flex-row items-center gap-2">
+          <Text className={`text-[9px] font-black tracking-widest ${isDark ? 'text-white/40' : 'text-slate-400'}`}>
+            SHOW ENGINE
+          </Text>
+          <Activity size={12} color={isDark ? '#475569' : '#94a3b8'} strokeWidth={3} />
+        </View>
+      </MotiView>
+    </TouchableOpacity>
   );
 };
 
@@ -325,11 +331,12 @@ const ChatPanel = () => {
   };
 
   useEffect(() => {
-    if (scrollViewRef.current) {
-      setTimeout(() => {
+    const timer = setTimeout(() => {
+      if (scrollViewRef.current) {
         scrollViewRef.current.scrollToEnd({ animated: true });
-      }, 150);
-    }
+      }
+    }, 150);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   const handleBookProvider = (provider) => {
@@ -452,8 +459,8 @@ const ChatPanel = () => {
             onPress={handleSend}
             disabled={!input.trim() || !activeConversationId}
             className={`w-12 h-12 rounded-full items-center justify-center mb-1 ${input.trim()
-                ? (isDark ? 'bg-slate-700' : 'bg-slate-900')
-                : (isDark ? 'bg-slate-800' : 'bg-slate-200')
+              ? (isDark ? 'bg-slate-700' : 'bg-slate-900')
+              : (isDark ? 'bg-slate-800' : 'bg-slate-200')
               }`}
           >
             <Send size={18} color={input.trim() ? '#fff' : (isDark ? '#334155' : '#cbd5e1')} />

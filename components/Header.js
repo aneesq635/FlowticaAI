@@ -75,7 +75,7 @@ export default function Header() {
           </TouchableOpacity>
 
           {/* Show Engine Toggle Integrated in Header to avoid overlap */}
-          {isOrchestrator && (
+          {/* {isOrchestrator && (
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => dispatch(toggleEngine())}
@@ -92,7 +92,7 @@ export default function Header() {
                 {isEngineExpanded ? 'HIDE ENGINE' : 'SHOW ENGINE'}
               </Text>
             </TouchableOpacity>
-          )}
+          )} */}
         </View>
 
         {/* Right: Theme + Bell */}

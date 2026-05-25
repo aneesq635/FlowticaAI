@@ -1020,21 +1020,21 @@ export default function ProviderDashboard() {
                         </View>
                         {(req.status === "approved" ||
                           req.status === "denied") && (
-                          <TouchableOpacity
-                            onPress={() => handleDeleteRequest(req)}
-                            className={`p-1.5 rounded-full ${req.status === "approved" && !isRequestTimePassed(req) ? (isDark ? "bg-slate-800 opacity-40" : "bg-slate-100 opacity-40") : "bg-red-500/10"}`}
-                          >
-                            <Trash2
-                              size={12}
-                              color={
-                                req.status === "approved" &&
-                                !isRequestTimePassed(req)
-                                  ? "#64748b"
-                                  : "#ef4444"
-                              }
-                            />
-                          </TouchableOpacity>
-                        )}
+                            <TouchableOpacity
+                              onPress={() => handleDeleteRequest(req)}
+                              className={`p-1.5 rounded-full ${req.status === "approved" && !isRequestTimePassed(req) ? (isDark ? "bg-slate-800 opacity-40" : "bg-slate-100 opacity-40") : "bg-red-500/10"}`}
+                            >
+                              <Trash2
+                                size={12}
+                                color={
+                                  req.status === "approved" &&
+                                    !isRequestTimePassed(req)
+                                    ? "#64748b"
+                                    : "#ef4444"
+                                }
+                              />
+                            </TouchableOpacity>
+                          )}
                       </View>
                     </View>
 
@@ -1119,7 +1119,7 @@ export default function ProviderDashboard() {
                               onPress={() => {
                                 const phone =
                                   req.customer_phone &&
-                                  req.customer_phone !== "Not provided"
+                                    req.customer_phone !== "Not provided"
                                     ? req.customer_phone
                                     : req.contact_phone;
                                 Linking.openURL(`tel:${phone}`);
@@ -1134,7 +1134,7 @@ export default function ProviderDashboard() {
                                 className={`text-xs ml-2 font-black ${isDark ? "text-slate-200" : "text-slate-700"}`}
                               >
                                 {req.customer_phone &&
-                                req.customer_phone !== "Not provided"
+                                  req.customer_phone !== "Not provided"
                                   ? req.customer_phone
                                   : req.contact_phone}
                               </Text>
@@ -1173,44 +1173,44 @@ export default function ProviderDashboard() {
 
                     {(req.status === "pending" ||
                       req.status === "counter_offer") && (
-                      <View style={{ flexDirection: "row", gap: 12 }}>
-                        <TouchableOpacity
-                          onPress={() =>
-                            handleRequestResponse(req._id, "approved")
-                          }
-                          className="flex-1 bg-green-500 py-3 rounded-2xl items-center justify-center"
-                        >
-                          <Text className="text-white font-black text-xs">
-                            Approve
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => {
-                            setSelectedRequest(req);
-                            setCounterPrice(String(req.offered_price || ""));
-                            setCounterDate(req.requested_date || "");
-                            setCounterTime(req.requested_time || "");
-                            setCounterNote("");
-                            setIsCounterModalOpen(true);
-                          }}
-                          className={`flex-1 py-3 rounded-2xl items-center justify-center ${isDark ? "bg-slate-700" : "bg-slate-900"}`}
-                        >
-                          <Text className="text-white font-black text-xs">
-                            Counter
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() =>
-                            handleRequestResponse(req._id, "denied")
-                          }
-                          className="flex-1 bg-red-500/10 py-3 rounded-2xl items-center justify-center"
-                        >
-                          <Text className="text-red-500 font-black text-xs">
-                            Deny
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
+                        <View style={{ flexDirection: "row", gap: 12 }}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleRequestResponse(req._id, "approved")
+                            }
+                            className="flex-1 bg-green-500 py-3 rounded-2xl items-center justify-center"
+                          >
+                            <Text className="text-white font-black text-xs">
+                              Approve
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedRequest(req);
+                              setCounterPrice(String(req.offered_price || ""));
+                              setCounterDate(req.requested_date || "");
+                              setCounterTime(req.requested_time || "");
+                              setCounterNote("");
+                              setIsCounterModalOpen(true);
+                            }}
+                            className={`flex-1 py-3 rounded-2xl items-center justify-center ${isDark ? "bg-slate-700" : "bg-slate-900"}`}
+                          >
+                            <Text className="text-white font-black text-xs">
+                              Counter
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleRequestResponse(req._id, "denied")
+                            }
+                            className="flex-1 bg-red-500/10 py-3 rounded-2xl items-center justify-center"
+                          >
+                            <Text className="text-red-500 font-black text-xs">
+                              Deny
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                   </Card>
                 );
               })}
@@ -1540,39 +1540,37 @@ export default function ProviderDashboard() {
                   </View>
                 </View>
                 <View className="mb-4">
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text
-                      className={`text-[10px] font-bold uppercase ml-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                    >
-                      Primary Service Location
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setShowMap(true)}
-                      className={`px-3 py-1.5 rounded-xl flex-row items-center border ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200"}`}
-                    >
-                      <Map size={12} color="#6366f1" />
-                      <Text
-                        className={`ml-1.5 text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-600"}`}
-                      >
-                        {tempLocationData ? "Update Map" : "Pin on Map"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text
+                    className={`text-[10px] font-bold uppercase mb-1.5 ml-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                  >
+                    Primary Service Location
+                  </Text>
                   <Controller
                     control={control}
                     name="location"
                     rules={{ required: true }}
                     render={({ field: { onChange, value } }) => (
                       <View>
-                        <TextInput
-                          className={`rounded-2xl px-5 py-4 font-medium border ${isDark ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"}`}
-                          placeholder="e.g. Islamabad, I-14"
-                          placeholderTextColor={isDark ? "#475569" : "#94a3b8"}
-                          value={value}
-                          onChangeText={onChange}
-                        />
+                        <View
+                          className={`flex-row items-center rounded-2xl border overflow-hidden ${isDark ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
+                            }`}
+                        >
+                          <TextInput
+                            className={`flex-1 px-5 py-4 font-medium ${isDark ? "text-white" : "text-slate-900"}`}
+                            placeholder="e.g. Islamabad, I-14"
+                            placeholderTextColor={isDark ? "#475569" : "#94a3b8"}
+                            value={value}
+                            onChangeText={onChange}
+                          />
+                          <TouchableOpacity
+                            onPress={() => setShowMap(true)}
+                            className={`px-4 py-4 ${isDark ? "bg-slate-700" : "bg-slate-200"}`}
+                          >
+                            <Map size={18} color={isDark ? "#cbd5e1" : "#0f172a"} />
+                          </TouchableOpacity>
+                        </View>
                         {tempLocationData && (
-                          <View className="mt-3 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                          <View className="mt-4 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
                             <MiniMap
                               latitude={tempLocationData.latitude}
                               longitude={tempLocationData.longitude}

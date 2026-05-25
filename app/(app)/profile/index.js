@@ -191,48 +191,55 @@ export default function ProfileScreen() {
             {/* Location */}
             <View style={{ marginBottom: 20 }}>
               <Typography variant="small" className="font-bold mb-2">Location</Typography>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={{ flex: 1, position: 'relative' }}>
-                  <TextInput
-                    value={profile.location}
-                    onChangeText={(val) => setProfile({ ...profile, location: val })}
-                    placeholder="City, Country"
-                    placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                    style={{
-                      paddingLeft: 48, paddingRight: 16, paddingVertical: 16,
-                      borderRadius: 16, borderWidth: 1,
-                      borderColor: isDark ? '#1e293b' : '#e2e8f0',
-                      backgroundColor: isDark ? '#020617' : '#f8fafc',
-                      color: isDark ? '#ffffff' : '#0f172a',
-                      fontSize: 16
-                    }}
-                  />
-                  <View style={{ position: 'absolute', left: 16, top: 18 }}>
-                    <MapPin size={18} color="#64748b" />
-                  </View>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: isDark ? '#1e293b' : '#e2e8f0',
+                  backgroundColor: isDark ? '#020617' : '#f8fafc',
+                  overflow: 'hidden'
+                }}
+              >
+                <View style={{ paddingLeft: 16 }}>
+                  <MapPin size={18} color="#64748b" />
                 </View>
+                <TextInput
+                  value={profile.location}
+                  onChangeText={(val) => setProfile({ ...profile, location: val })}
+                  placeholder="Street, City, Country"
+                  placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                  style={{
+                    flex: 1,
+                    paddingHorizontal: 12,
+                    paddingVertical: 16,
+                    color: isDark ? '#ffffff' : '#0f172a',
+                    fontSize: 16,
+                  }}
+                />
                 <TouchableOpacity
                   onPress={() => setShowMap(true)}
-                  style={{ 
-                    marginLeft: 12, 
-                    padding: 14, 
-                    borderRadius: 16,
+                  style={{
+                    padding: 16,
                     backgroundColor: isDark ? '#1e293b' : '#f1f5f9',
-                    borderWidth: 1,
-                    borderColor: isDark ? '#334155' : '#e2e8f0'
+                    borderLeftWidth: 1,
+                    borderLeftColor: isDark ? '#334155' : '#e2e8f0'
                   }}
                 >
-                  <MapIcon size={20} color="#2563eb" />
+                  <MapIcon size={18} color={isDark ? '#cbd5e1' : '#0f172a'} />
                 </TouchableOpacity>
               </View>
 
               {profile.location_data?.latitude && (
-                <MiniMap
-                  latitude={profile.location_data.latitude}
-                  longitude={profile.location_data.longitude}
-                  address={profile.location}
-                  height={120}
-                />
+                <View style={{ marginTop: 12 }}>
+                  <MiniMap
+                    latitude={profile.location_data.latitude}
+                    longitude={profile.location_data.longitude}
+                    address={profile.location}
+                    height={120}
+                  />
+                </View>
               )}
             </View>
 

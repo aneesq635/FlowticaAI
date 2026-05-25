@@ -16,6 +16,7 @@ const StatusBadge = ({ status }) => {
       case 'cancelled': return { bg: '#fef2f2', text: '#ef4444', label: 'Cancelled' };
       case 'confirmed': return { bg: '#ebf5ff', text: '#3b82f6', label: 'Confirmed' };
       case 'pending': return { bg: '#fff7ed', text: '#f97316', label: 'Pending' };
+      case 'waiting_review': return { bg: '#f5f3ff', text: '#8b5cf6', label: 'Waiting for Review' };
       default: return { bg: '#f8fafc', text: '#64748b', label: status.charAt(0).toUpperCase() + status.slice(1) };
     }
   };
@@ -220,7 +221,14 @@ export default function BookedJobs() {
             const snap = booking.snapshot || {};
             const completed = booking.status === 'completed';
             const cancelled = booking.status === 'cancelled';
-            const upcoming = !completed && !cancelled;
+            const providerSubmitted = booking.provider_submitted;
+            const customerSubmitted = booking.customer_submitted;
+            const upcoming = !completed && !cancelled && !providerSubmitted;
+
+            let displayStatus = booking.status;
+            if (providerSubmitted && !customerSubmitted && !completed) {
+              displayStatus = 'waiting_review';
+            }
 
             return (
               <View key={booking._id} style={s.card}>
@@ -231,7 +239,7 @@ export default function BookedJobs() {
                     <Text style={s.priceText}>Agreed Price: {booking.price} PKR</Text>
                   </View>
                   <View style={s.statusRow}>
-                    <StatusBadge status={booking.status} />
+                    <StatusBadge status={displayStatus} />
                     <TouchableOpacity onPress={() => handleDeleteBooking(booking._id)} style={s.trashBtn}>
                       <Trash size={16} color="#ef4444" />
                     </TouchableOpacity>
@@ -324,20 +332,30 @@ export default function BookedJobs() {
                 </View>
 
                 {/* Footer Action Buttons */}
-                {upcoming && (
+                {(upcoming || (cancelled && !providerSubmitted)) && (
                   <View style={s.cardActions}>
-                    <TouchableOpacity onPress={() => handleCancelBooking(booking)} style={[s.actionBtn, s.cancelBtn]}>
-                      <Trash size={14} color="#ef4444" style={{ marginRight: 6 }} />
-                      <Text style={s.cancelBtnText}>Cancel Job</Text>
-                    </TouchableOpacity>
+                    {upcoming && (
+                      <TouchableOpacity onPress={() => handleCancelBooking(booking)} style={[s.actionBtn, s.cancelBtn]}>
+                        <Trash size={14} color="#ef4444" style={{ marginRight: 6 }} />
+                        <Text style={s.cancelBtnText}>Cancel Job</Text>
+                      </TouchableOpacity>
+                    )}
 
                     <TouchableOpacity
                       onPress={() => handleOpenComplete(booking)}
                       style={[s.actionBtn, s.completeBtn]}
                     >
                       <CheckCircle size={14} color="#fff" style={{ marginRight: 6 }} />
-                      <Text style={s.completeBtnText}>Done</Text>
+                      <Text style={s.completeBtnText}>{cancelled ? 'Submit Closure' : 'Done'}</Text>
                     </TouchableOpacity>
+                  </View>
+                )}
+
+                {providerSubmitted && !customerSubmitted && !completed && (
+                  <View style={{ marginTop: 16, padding: 12, backgroundColor: '#f5f3ff', borderRadius: 12, borderWidth: 1, borderColor: '#ddd6fe' }}>
+                    <Text style={{ color: '#7c3aed', fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
+                      Waiting for customer to provide rating and feedback.
+                    </Text>
                   </View>
                 )}
               </View>

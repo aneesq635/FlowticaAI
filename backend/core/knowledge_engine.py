@@ -242,10 +242,7 @@ Example for "Mujhe AC wala chahiye parso sham ko":
             if location:
                 loc_regex = re.compile(re.escape(location), re.IGNORECASE)
                 loc_filter = {
-                    "$or": [
-                        {"service_location": loc_regex},
-                        {"location": loc_regex},
-                    ]
+                    "service_location": loc_regex
                 }
             query_filter = {field: regex, **loc_filter}
             docs = list(self.db.service_providers.find(query_filter))
@@ -302,10 +299,7 @@ Example for "Mujhe AC wala chahiye parso sham ko":
             if location:
                 loc_regex = re.compile(re.escape(location), re.IGNORECASE)
                 query_filter["$and"] = [{
-                    "$or": [
-                        {"service_location": loc_regex},
-                        {"location": loc_regex},
-                    ]
+                    "service_location": loc_regex
                 }]
 
             docs = list(self.db.service_providers.find(query_filter))
@@ -327,9 +321,8 @@ Example for "Mujhe AC wala chahiye parso sham ko":
 
         for p in all_providers:
             if location:
-                loc1 = p.get("service_location", "").lower()
-                loc2 = p.get("location", "").lower()
-                if location.lower() not in loc1 and location.lower() not in loc2:
+                loc = p.get("service_location", "").lower()
+                if location.lower() not in loc:
                     continue
 
             # Score against multiple fields
@@ -442,7 +435,7 @@ Example for "Mujhe AC wala chahiye parso sham ko":
             doc_svc   = (doc.get("service_name") or "").lower()
             doc_type  = (doc.get("service_type") or "").lower()
             doc_spec  = (doc.get("specialization") or "").lower()
-            doc_loc   = (doc.get("service_location") or doc.get("location") or "").lower()
+            doc_loc   = (doc.get("service_location") or "").lower()
 
             # Base retrieval quality (0–15 pts)
             score += doc.get("_source_score", 0) * 15

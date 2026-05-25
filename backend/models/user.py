@@ -21,7 +21,6 @@ class UserModel:
             "supabase_id": supabase_id,
             "email": data.get("email", ""),
             "phone": data.get("phone", ""),
-            "location": data.get("location", ""),
             "location_data": data.get("location_data", {}),
             "location_permission_status": data.get("location_permission_status", "not_requested"),
             "name": data.get("name") or data.get("user_metadata", {}).get("full_name", ""),
@@ -61,8 +60,6 @@ class UserModel:
                     provider_update["email"] = update_data["email"]
                 if "phone" in update_data:
                     provider_update["phone"] = update_data["phone"]
-                if "location" in update_data:
-                    provider_update["location"] = update_data["location"]
                 if "location_data" in update_data:
                     provider_update["location_data"] = update_data["location_data"]
                 if "avatar_url" in update_data:
