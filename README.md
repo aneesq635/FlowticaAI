@@ -454,7 +454,7 @@ Intent → Booking → Scheduling → Communication
 
 ## Demo
 
->  **Demo Video:** [Watch on Google Drive](#) *(3–5 min walkthrough)*
+>  **Demo Video:** [Watch on Google Drive](https://drive.google.com/drive/folders/1dCcMvtsh4_l7xjEVsjf4zdAnmRjl-ffo?usp=sharing) 
 
 The demo covers:
 - Natural language input (English + Roman Urdu)
